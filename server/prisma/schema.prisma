@@ -1,0 +1,196 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DamageType {
+  PURE
+  PHYSICAL
+  MAGICAL
+}
+
+enum SkillCategory {
+  ACTIVE
+  PASSIVE
+}
+
+enum WeaponCode {
+  SWORD_SHIELD
+  SPEAR
+  BOW
+  SCEPTER
+  DAGGER
+  GAUNTLET
+}
+
+enum ItemType {
+  WEAPON
+  ARMOR
+  CONSUMABLE
+  MATERIAL
+}
+
+enum ItemRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+model User {
+  id           Int         @id @default(autoincrement())
+  email        String      @unique
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  character    Character?
+}
+
+model Character {
+  id                    Int                        @id @default(autoincrement())
+  userId                Int                        @unique
+  user                  User                       @relation(fields: [userId], references: [id])
+  name                  String                     @unique
+  equippedWeaponTypeId  Int?
+  equippedWeaponType    WeaponType?                @relation(fields: [equippedWeaponTypeId], references: [id])
+  positionX             Float                      @default(0)
+  positionY             Float                      @default(0)
+  health                Int                        @default(100)
+  mana                  Int                        @default(50)
+  physicalDefense       Int                        @default(0)
+  magicalDefense        Int                        @default(0)
+  skillBindings         Json                       @default("{}")
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  weaponProgress        CharacterWeaponProgress[]
+  skills                CharacterSkill[]
+  inventory             InventoryItem[]
+  sessions              PlayerSession?
+}
+
+model WeaponType {
+  id            Int                        @id @default(autoincrement())
+  code          WeaponCode                  @unique
+  name          String
+  description   String?
+  skills        Skill[]
+  characterData CharacterWeaponProgress[]
+  items         Item[]
+  equippedBy    Character[]
+}
+
+model CharacterWeaponProgress {
+  id           Int        @id @default(autoincrement())
+  characterId  Int
+  weaponTypeId Int
+  experience   Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  character    Character  @relation(fields: [characterId], references: [id])
+  weaponType   WeaponType @relation(fields: [weaponTypeId], references: [id])
+
+  @@unique([characterId, weaponTypeId])
+}
+
+model Skill {
+  id            Int            @id @default(autoincrement())
+  name          String          @unique
+  description   String?
+  category      SkillCategory
+  weaponTypeId  Int?
+  weaponType    WeaponType?    @relation(fields: [weaponTypeId], references: [id])
+  damageType    DamageType
+  baseDamage    Int            @default(0)
+  cooldown      Float          @default(0)
+  resourceCost  Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  characterLink CharacterSkill[]
+}
+
+model CharacterSkill {
+  id           Int        @id @default(autoincrement())
+  characterId  Int
+  skillId      Int
+  isUnlocked   Boolean    @default(false)
+  assignedKey  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  character    Character  @relation(fields: [characterId], references: [id])
+  skill        Skill      @relation(fields: [skillId], references: [id])
+
+  @@unique([characterId, skillId])
+}
+
+model Item {
+  id            Int                @id @default(autoincrement())
+  name          String             @unique
+  description   String?
+  type          ItemType
+  rarity        ItemRarity         @default(COMMON)
+  weaponTypeId  Int?
+  weaponType    WeaponType?        @relation(fields: [weaponTypeId], references: [id])
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  inventory     InventoryItem[]
+  dropTableItem DropTableItem[]
+}
+
+model InventoryItem {
+  id          Int        @id @default(autoincrement())
+  characterId Int
+  itemId      Int
+  quantity    Int        @default(1)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  character   Character  @relation(fields: [characterId], references: [id])
+  item        Item       @relation(fields: [itemId], references: [id])
+
+  @@unique([characterId, itemId])
+}
+
+model DropTable {
+  id       Int             @id @default(autoincrement())
+  name     String          @unique
+  items    DropTableItem[]
+  monsters Monster[]
+}
+
+model DropTableItem {
+  id           Int        @id @default(autoincrement())
+  dropTableId  Int
+  itemId       Int
+  probability  Float
+  minQuantity  Int        @default(1)
+  maxQuantity  Int        @default(1)
+  dropTable    DropTable  @relation(fields: [dropTableId], references: [id])
+  item         Item       @relation(fields: [itemId], references: [id])
+}
+
+model Monster {
+  id            Int        @id @default(autoincrement())
+  name          String      @unique
+  baseExperience Int       @default(10)
+  dropTableId   Int?
+  dropTable     DropTable? @relation(fields: [dropTableId], references: [id])
+}
+
+model PlayerSession {
+  id          Int        @id @default(autoincrement())
+  characterId Int        @unique
+  socketId    String
+  lastActive  DateTime   @default(now())
+  character   Character  @relation(fields: [characterId], references: [id])
+}

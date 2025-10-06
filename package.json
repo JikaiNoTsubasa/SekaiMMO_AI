@@ -1,0 +1,29 @@
+{
+  "name": "sekaimmo-ai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SekaiMMO AI monorepo",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:client": "npm --workspace client run dev",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "npm --workspace server run build",
+    "build:client": "npm --workspace client run build",
+    "lint": "npm run lint:server && npm run lint:client",
+    "lint:server": "npm --workspace server run lint",
+    "lint:client": "npm --workspace client run lint",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "npm --workspace server run test",
+    "test:client": "npm --workspace client run test"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
