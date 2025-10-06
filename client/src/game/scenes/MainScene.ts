@@ -15,6 +15,8 @@ interface MovementPayload {
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Arc;
+  private pointerMarker!: Phaser.GameObjects.Arc;
+  private readonly worldBounds = { width: 3200, height: 3200 };
   declare private readonly otherPlayers: Map<number, Phaser.GameObjects.Arc>;
   declare private moveTarget: Phaser.Math.Vector2 | null;
   declare private lastBroadcast: number;
@@ -34,22 +36,38 @@ export class MainScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor('#141625');
-    this.add.grid(480, 270, 960, 540, 64, 64, 0x1f2238, 0.2, 0x1f2238, 0.2);
-
-    this.player = this.add.circle(
-      this.options.initialPosition.x,
-      this.options.initialPosition.y,
-      14,
-      0x4f9dff
+    this.add.grid(
+      this.worldBounds.width / 2,
+      this.worldBounds.height / 2,
+      this.worldBounds.width,
+      this.worldBounds.height,
+      64,
+      64,
+      0x1f2238,
+      0.15,
+      0x1f2238,
+      0.15
     );
 
-    const pointerMarker = this.add.circle(0, 0, 8, 0xffd166, 0.3);
-    pointerMarker.setVisible(false);
+    const startX = Phaser.Math.Clamp(this.options.initialPosition.x, 0, this.worldBounds.width);
+    const startY = Phaser.Math.Clamp(this.options.initialPosition.y, 0, this.worldBounds.height);
+    this.player = this.add.circle(startX, startY, 14, 0x4f9dff);
+    this.player.setDepth(10);
+
+    this.pointerMarker = this.add.circle(0, 0, 8, 0xffd166, 0.3);
+    this.pointerMarker.setVisible(false);
+    this.pointerMarker.setDepth(9);
+
+    this.cameras.main.setBounds(0, 0, this.worldBounds.width, this.worldBounds.height);
+    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+    this.cameras.main.roundPixels = true;
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.moveTarget = new Phaser.Math.Vector2(pointer.worldX, pointer.worldY);
-      pointerMarker.setPosition(this.moveTarget.x, this.moveTarget.y);
-      pointerMarker.setVisible(true);
+      const targetX = Phaser.Math.Clamp(pointer.worldX, 0, this.worldBounds.width);
+      const targetY = Phaser.Math.Clamp(pointer.worldY, 0, this.worldBounds.height);
+      this.moveTarget = new Phaser.Math.Vector2(targetX, targetY);
+      this.pointerMarker.setPosition(this.moveTarget.x, this.moveTarget.y);
+      this.pointerMarker.setVisible(true);
       this.emitMovement(this.moveTarget);
     });
 
@@ -76,6 +94,7 @@ export class MainScene extends Phaser.Scene {
 
     if (distance < 4) {
       this.moveTarget = null;
+      this.pointerMarker.setVisible(false);
       return;
     }
 
@@ -87,8 +106,10 @@ export class MainScene extends Phaser.Scene {
     );
 
     const velocity = speed * (delta / 1000);
-    this.player.x += Math.cos(angle) * velocity;
-    this.player.y += Math.sin(angle) * velocity;
+    const nextX = this.player.x + Math.cos(angle) * velocity;
+    const nextY = this.player.y + Math.sin(angle) * velocity;
+    this.player.x = Phaser.Math.Clamp(nextX, 0, this.worldBounds.width);
+    this.player.y = Phaser.Math.Clamp(nextY, 0, this.worldBounds.height);
 
     if (time - this.lastBroadcast > 180) {
       this.emitMovement(new Phaser.Math.Vector2(this.player.x, this.player.y));
@@ -97,9 +118,11 @@ export class MainScene extends Phaser.Scene {
   }
 
   private emitMovement(position: Phaser.Math.Vector2) {
+    const clampedX = Phaser.Math.Clamp(position.x, 0, this.worldBounds.width);
+    const clampedY = Phaser.Math.Clamp(position.y, 0, this.worldBounds.height);
     this.options.socket.emit('player:move', {
-      x: position.x,
-      y: position.y
+      x: clampedX,
+      y: clampedY
     });
   }
 
@@ -108,14 +131,17 @@ export class MainScene extends Phaser.Scene {
       return;
     }
 
+    const clampedX = Phaser.Math.Clamp(payload.position.x, 0, this.worldBounds.width);
+    const clampedY = Phaser.Math.Clamp(payload.position.y, 0, this.worldBounds.height);
     const existing = this.otherPlayers.get(payload.characterId);
 
     if (existing) {
-      existing.setPosition(payload.position.x, payload.position.y);
+      existing.setPosition(clampedX, clampedY);
       return;
     }
 
-    const actor = this.add.circle(payload.position.x, payload.position.y, 12, 0xff6b6b);
+    const actor = this.add.circle(clampedX, clampedY, 12, 0xff6b6b);
+    actor.setDepth(8);
     this.otherPlayers.set(payload.characterId, actor);
   }
 

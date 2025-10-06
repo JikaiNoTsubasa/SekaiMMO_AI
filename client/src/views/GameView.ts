@@ -14,6 +14,8 @@ export class GameView {
   declare private inventoryElement: HTMLElement | null;
   declare private skillBarElement: HTMLElement | null;
   declare private notificationsElement: HTMLElement | null;
+  declare private statsModal: HTMLElement | null;
+  declare private inventoryModal: HTMLElement | null;
   declare private socket: Socket | null;
   declare private game: Phaser.Game | null;
   declare private currentState: GameState | null;
@@ -26,6 +28,8 @@ export class GameView {
     this.inventoryElement = null;
     this.skillBarElement = null;
     this.notificationsElement = null;
+    this.statsModal = null;
+    this.inventoryModal = null;
     this.socket = null;
     this.game = null;
     this.currentState = null;
@@ -38,23 +42,36 @@ export class GameView {
       this.root = document.createElement('div');
       this.root.className = 'view game-view';
       this.root.innerHTML = `
-        <div class="game-layout">
+        <div class="game-container">
           <div class="game-canvas" id="game-canvas"></div>
-          <aside class="game-sidebar">
-            <section class="panel" id="stats-panel"></section>
-            <section class="panel" id="skills-panel">
-              <h2>Compétences</h2>
+          <div class="game-overlay">
+            <div class="hud-top">
+              <div class="hud-buttons">
+                <button class="secondary hud-button" id="stats-btn">Profil</button>
+                <button class="secondary hud-button" id="inventory-btn">Inventaire</button>
+                <button class="secondary hud-button" id="logout-btn">Se déconnecter</button>
+              </div>
+            </div>
+            <div class="skill-bar" id="skill-bar"></div>
+          </div>
+          <div class="notifications" id="notifications"></div>
+          <div class="modal" id="stats-modal" aria-hidden="true">
+            <div class="modal-content">
+              <button class="modal-close" data-target="stats-modal" aria-label="Fermer">×</button>
+              <h2>Profil du personnage</h2>
+              <div class="stats-panel" id="stats-panel"></div>
+              <h3>Compétences</h3>
               <ul class="skill-list"></ul>
-            </section>
-            <section class="panel" id="inventory-panel">
+            </div>
+          </div>
+          <div class="modal" id="inventory-modal" aria-hidden="true">
+            <div class="modal-content">
+              <button class="modal-close" data-target="inventory-modal" aria-label="Fermer">×</button>
               <h2>Inventaire</h2>
               <ul class="inventory-list"></ul>
-            </section>
-            <button class="secondary" id="logout-btn">Se déconnecter</button>
-          </aside>
+            </div>
+          </div>
         </div>
-        <div class="skill-bar" id="skill-bar"></div>
-        <div class="notifications" id="notifications"></div>
       `;
 
       parent.innerHTML = '';
@@ -62,13 +79,45 @@ export class GameView {
 
       this.canvasHost = this.root.querySelector('#game-canvas');
       this.statsElement = this.root.querySelector('#stats-panel');
-      this.skillsElement = this.root.querySelector('.skill-list');
-      this.inventoryElement = this.root.querySelector('.inventory-list');
+      this.skillsElement = this.root.querySelector('#stats-modal .skill-list');
+      this.inventoryElement = this.root.querySelector('#inventory-modal .inventory-list');
       this.skillBarElement = this.root.querySelector('#skill-bar');
       this.notificationsElement = this.root.querySelector('#notifications');
+      this.statsModal = this.root.querySelector('#stats-modal');
+      this.inventoryModal = this.root.querySelector('#inventory-modal');
 
       const logoutButton = this.root.querySelector<HTMLButtonElement>('#logout-btn');
       logoutButton?.addEventListener('click', () => this.store.logout());
+
+      const statsButton = this.root.querySelector<HTMLButtonElement>('#stats-btn');
+      statsButton?.addEventListener('click', () => {
+        this.closeModal(this.inventoryModal);
+        this.toggleModal(this.statsModal);
+      });
+
+      const inventoryButton = this.root.querySelector<HTMLButtonElement>('#inventory-btn');
+      inventoryButton?.addEventListener('click', () => {
+        this.closeModal(this.statsModal);
+        this.toggleModal(this.inventoryModal);
+      });
+
+      const closeButtons = this.root.querySelectorAll<HTMLButtonElement>('.modal-close');
+      closeButtons.forEach((button) => {
+        const targetId = button.dataset.target;
+        if (!targetId) {
+          return;
+        }
+        const modal = this.root?.querySelector<HTMLElement>(`#${targetId}`) ?? null;
+        button.addEventListener('click', () => this.closeModal(modal));
+      });
+
+      [this.statsModal, this.inventoryModal].forEach((modal) => {
+        modal?.addEventListener('click', (event) => {
+          if (event.target === modal) {
+            this.closeModal(modal);
+          }
+        });
+      });
     }
 
     this.ensureSocket(token, state);
@@ -125,7 +174,7 @@ export class GameView {
     }
 
     this.statsElement.innerHTML = `
-      <h2>${state.character.name}</h2>
+      <h3>${state.character.name}</h3>
       <ul class="stats-list">
         <li>Vie: ${state.character.health}</li>
         <li>Mana: ${state.character.mana}</li>
@@ -255,6 +304,33 @@ export class GameView {
     }, 4000);
   }
 
+  private openModal(modal: HTMLElement | null) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  private closeModal(modal: HTMLElement | null) {
+    if (!modal) {
+      return;
+    }
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  private toggleModal(modal: HTMLElement | null) {
+    if (!modal) {
+      return;
+    }
+    if (modal.classList.contains('open')) {
+      this.closeModal(modal);
+    } else {
+      this.openModal(modal);
+    }
+  }
+
   destroy() {
     this.socket?.disconnect();
     this.socket = null;
@@ -270,6 +346,8 @@ export class GameView {
     this.inventoryElement = null;
     this.skillBarElement = null;
     this.notificationsElement = null;
+    this.statsModal = null;
+    this.inventoryModal = null;
     this.currentState = null;
   }
 }
