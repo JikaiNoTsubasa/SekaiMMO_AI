@@ -1,0 +1,227 @@
+/* Inventory Panel - Panneau d'inventaire */
+
+.inventory-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  max-height: 80vh;
+  background: rgba(15, 18, 35, 0.98);
+  border: 1px solid rgba(90, 110, 180, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  z-index: 150;
+  display: none;
+  flex-direction: column;
+}
+
+.inventory-panel.visible {
+  display: flex;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid rgba(80, 100, 160, 0.3);
+  cursor: move;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #c0d0ff;
+}
+
+.panel-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(40, 45, 70, 0.8);
+  border: 1px solid rgba(100, 115, 170, 0.4);
+  border-radius: 6px;
+  color: #b0c0e0;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.panel-close:hover {
+  background: rgba(60, 65, 95, 0.9);
+}
+
+.panel-content {
+  padding: 0.8rem;
+  overflow-y: auto;
+}
+
+.inventory-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.8rem;
+  background: rgba(25, 30, 55, 0.7);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #a0b0d0;
+}
+
+.gold-display .gold-value {
+  color: #ffd700;
+  font-weight: 600;
+}
+
+.inventory-grid {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(20, 25, 45, 0.5);
+  border-radius: 8px;
+}
+
+.inventory-slot {
+  position: relative;
+  aspect-ratio: 1;
+  background: rgba(25, 30, 55, 0.8);
+  border: 2px solid rgba(60, 75, 120, 0.4);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inventory-slot:hover {
+  background: rgba(35, 42, 70, 0.9);
+  border-color: rgba(100, 120, 180, 0.6);
+}
+
+.inventory-slot.has-item {
+  border-color: rgba(80, 100, 160, 0.5);
+}
+
+.inventory-slot.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+
+.inventory-slot.drag-over {
+  background: rgba(60, 80, 140, 0.5);
+  border-color: rgba(120, 150, 220, 0.8);
+}
+
+.slot-icon {
+  position: absolute;
+  inset: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.slot-quantity {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.slot-rarity-border {
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* Rarity colors */
+.inventory-slot.rarity-uncommon .slot-rarity-border {
+  border-color: rgba(0, 255, 0, 0.5);
+}
+
+.inventory-slot.rarity-rare .slot-rarity-border {
+  border-color: rgba(0, 136, 255, 0.5);
+}
+
+.inventory-slot.rarity-epic .slot-rarity-border {
+  border-color: rgba(170, 0, 255, 0.5);
+}
+
+.inventory-slot.rarity-legendary .slot-rarity-border {
+  border-color: rgba(255, 136, 0, 0.6);
+  box-shadow: inset 0 0 8px rgba(255, 136, 0, 0.3);
+}
+
+.inventory-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.inventory-actions button {
+  flex: 1;
+  padding: 0.5rem;
+  background: rgba(40, 50, 80, 0.8);
+  border: 1px solid rgba(80, 100, 160, 0.4);
+  border-radius: 6px;
+  color: #c0d0f0;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.inventory-actions button:hover {
+  background: rgba(55, 65, 100, 0.9);
+}
+
+/* Item tooltip */
+.item-tooltip {
+  display: none;
+  position: absolute;
+  padding: 0.6rem 0.8rem;
+  background: rgba(10, 15, 30, 0.98);
+  border: 1px solid rgba(100, 120, 180, 0.5);
+  border-radius: 8px;
+  min-width: 200px;
+  max-width: 280px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  pointer-events: none;
+}
+
+.tooltip-header {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.tooltip-type {
+  font-size: 11px;
+  color: #8090b0;
+  margin-bottom: 6px;
+}
+
+.tooltip-desc {
+  font-size: 11px;
+  color: #a0b0d0;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.tooltip-stack {
+  font-size: 10px;
+  color: #708090;
+  font-style: italic;
+}

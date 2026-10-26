@@ -1,0 +1,370 @@
+/* Guild Panel - Interface de guilde */
+
+.guild-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 480px;
+  max-height: 80vh;
+  background: rgba(15, 18, 35, 0.98);
+  border: 1px solid rgba(90, 110, 180, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  z-index: 150;
+  display: none;
+  flex-direction: column;
+}
+
+.guild-panel.visible {
+  display: flex;
+}
+
+.guild-content {
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+/* No guild view */
+.no-guild-view {
+  text-align: center;
+  padding: 1rem;
+}
+
+.no-guild-view p {
+  color: #8090b0;
+  margin-bottom: 1.5rem;
+}
+
+.create-guild-form {
+  padding: 1rem;
+  background: rgba(25, 30, 55, 0.7);
+  border: 1px solid rgba(70, 85, 130, 0.4);
+  border-radius: 8px;
+}
+
+.create-guild-form h3 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: #a0b0d0;
+}
+
+.create-guild-form input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.5rem;
+  background: rgba(20, 25, 45, 0.8);
+  border: 1px solid rgba(70, 90, 140, 0.4);
+  border-radius: 6px;
+  color: #d0e0f0;
+  font-size: 0.9rem;
+}
+
+.create-guild-form input:focus {
+  outline: none;
+  border-color: rgba(100, 130, 200, 0.6);
+}
+
+.create-cost {
+  color: #ffd700;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.btn-create-guild {
+  width: 100%;
+  padding: 0.6rem;
+  background: rgba(60, 100, 60, 0.8);
+  border: 1px solid rgba(80, 140, 80, 0.5);
+  border-radius: 6px;
+  color: #c0e0c0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-create-guild:hover {
+  background: rgba(70, 120, 70, 0.9);
+}
+
+/* Guild view */
+.guild-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(70, 90, 140, 0.3);
+}
+
+.guild-tab {
+  padding: 0.6rem 1rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8090b0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.guild-tab:hover {
+  color: #b0c0e0;
+}
+
+.guild-tab.active {
+  color: #c0d0ff;
+  border-bottom-color: #6080d0;
+}
+
+/* Info tab */
+.guild-info {
+  padding: 0.5rem;
+}
+
+.guild-header-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
+.guild-name {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #c0d0ff;
+}
+
+.guild-level {
+  padding: 4px 10px;
+  background: rgba(60, 80, 140, 0.5);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #a0b0d0;
+}
+
+.guild-desc {
+  color: #8090b0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.guild-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.stat {
+  text-align: center;
+  padding: 0.6rem;
+  background: rgba(25, 30, 55, 0.6);
+  border-radius: 6px;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #7080a0;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 0.9rem;
+  color: #c0d0e0;
+  font-weight: 600;
+}
+
+.stat-value.gold {
+  color: #ffd700;
+}
+
+.guild-actions {
+  text-align: center;
+}
+
+.btn-leave-guild {
+  padding: 0.5rem 1.5rem;
+  background: rgba(130, 50, 50, 0.7);
+  border: 1px solid rgba(180, 80, 80, 0.5);
+  border-radius: 6px;
+  color: #e0b0b0;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-leave-guild:hover {
+  background: rgba(150, 60, 60, 0.8);
+}
+
+/* Members tab */
+.guild-members {
+  padding: 0.5rem 0;
+}
+
+.invite-section {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.invite-input {
+  flex: 1;
+  padding: 0.5rem 0.8rem;
+  background: rgba(20, 25, 45, 0.8);
+  border: 1px solid rgba(70, 90, 140, 0.4);
+  border-radius: 6px;
+  color: #d0e0f0;
+  font-size: 0.85rem;
+}
+
+.btn-invite {
+  padding: 0.5rem 1rem;
+  background: rgba(50, 70, 130, 0.8);
+  border: 1px solid rgba(80, 110, 180, 0.5);
+  border-radius: 6px;
+  color: #c0d0ff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.members-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  margin-bottom: 4px;
+  background: rgba(25, 30, 55, 0.6);
+  border-radius: 6px;
+}
+
+.member-item.offline {
+  opacity: 0.6;
+}
+
+.member-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+}
+
+.member-status.online {
+  background: #00cc00;
+  box-shadow: 0 0 6px #00cc00;
+}
+
+.member-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.member-name {
+  font-size: 0.9rem;
+  color: #c0d0e0;
+}
+
+.member-rank {
+  font-size: 0.75rem;
+  color: #7080a0;
+}
+
+.member-rank.rank-leader {
+  color: #ffd700;
+}
+
+.member-rank.rank-officer {
+  color: #90c0ff;
+}
+
+.member-level {
+  font-size: 0.8rem;
+  color: #8090b0;
+}
+
+.member-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.member-actions button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(40, 50, 80, 0.7);
+  border: 1px solid rgba(70, 90, 140, 0.4);
+  border-radius: 4px;
+  color: #a0b0d0;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.member-actions button:hover {
+  background: rgba(55, 65, 100, 0.9);
+}
+
+.member-actions .btn-kick:hover {
+  background: rgba(130, 50, 50, 0.8);
+  border-color: rgba(180, 80, 80, 0.5);
+}
+
+/* Bank tab */
+.guild-bank {
+  padding: 1rem;
+  text-align: center;
+}
+
+.bank-gold {
+  font-size: 1.1rem;
+  color: #c0d0e0;
+  margin-bottom: 1rem;
+}
+
+.gold-amount {
+  color: #ffd700;
+  font-weight: 600;
+}
+
+.deposit-section {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.deposit-input {
+  width: 120px;
+  padding: 0.5rem 0.8rem;
+  background: rgba(20, 25, 45, 0.8);
+  border: 1px solid rgba(70, 90, 140, 0.4);
+  border-radius: 6px;
+  color: #d0e0f0;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.btn-deposit {
+  padding: 0.5rem 1rem;
+  background: rgba(60, 100, 60, 0.8);
+  border: 1px solid rgba(80, 140, 80, 0.5);
+  border-radius: 6px;
+  color: #c0e0c0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.bank-note {
+  font-size: 0.8rem;
+  color: #6080a0;
+  font-style: italic;
+}

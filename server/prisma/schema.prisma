@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// SekaiMMO - Schema Prisma
+// Version 2.0 - Refonte complète selon cahier des charges
 
 generator client {
   provider = "prisma-client-js"
@@ -14,151 +11,490 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum DamageType {
-  PURE
-  PHYSICAL
-  MAGICAL
-}
+// ============================================
+// ENUMS
+// ============================================
 
-enum SkillCategory {
-  ACTIVE
-  PASSIVE
-}
-
+// Types d'armes selon le cahier des charges
 enum WeaponCode {
-  SWORD_SHIELD
-  SPEAR
-  BOW
-  SCEPTER
-  DAGGER
-  GAUNTLET
+  SWORD           // Épée - Physique, Normale, 5% crit
+  DUAL_DAGGERS    // Double dagues - Physique faible, Rapide, 20% crit
+  BOW             // Arc - Physique distance, Normale, 10% crit
+  TWO_HANDED_AXE  // Hache à deux mains - Physique, Lente, 5% crit
+  WAND            // Baguette - Magique distance, Rapide, 5% crit
+  SCEPTER         // Sceptre - Magique distance, Normale, 5% crit
 }
 
+// Vitesse d'attaque
+enum AttackSpeed {
+  SLOW      // Lent (Hache)
+  NORMAL    // Normal (Épée, Arc, Sceptre)
+  FAST      // Rapide (Dagues, Baguette)
+}
+
+// Types de dégâts
+enum DamageType {
+  PHYSICAL  // Dégâts physiques
+  MAGICAL   // Dégâts magiques
+  PURE      // Dégâts purs (ignore les résistances)
+}
+
+// 8 Éléments magiques
+enum MagicElement {
+  NONE      // Sans élément
+  FIRE      // Feu
+  WATER     // Eau
+  EARTH     // Terre
+  AIR       // Air
+  LIGHTNING // Foudre
+  ICE       // Glace
+  DARKNESS  // Ténèbres
+  LIGHT     // Lumière
+}
+
+// Système de ranks (style japonais)
+enum Rank {
+  E   // Débutant
+  D   // Apprenti
+  C   // Confirmé
+  B   // Expert
+  A   // Maître
+}
+
+// Catégories de skills
+enum SkillCategory {
+  ACTIVE    // Compétence active (à utiliser)
+  PASSIVE   // Compétence passive (toujours active)
+}
+
+// Types d'items
 enum ItemType {
-  WEAPON
-  ARMOR
-  CONSUMABLE
-  MATERIAL
+  WEAPON      // Arme
+  ARMOR       // Armure
+  ACCESSORY   // Accessoire
+  CONSUMABLE  // Consommable
+  MATERIAL    // Matériau
+  COSMETIC    // Cosmétique (transmog)
 }
 
+// Rareté des items
 enum ItemRarity {
-  COMMON
-  UNCOMMON
-  RARE
-  EPIC
-  LEGENDARY
+  COMMON      // Commun (blanc)
+  UNCOMMON    // Peu commun (vert)
+  RARE        // Rare (bleu)
+  EPIC        // Épique (violet)
+  LEGENDARY   // Légendaire (orange)
 }
+
+// Slots d'équipement
+enum EquipmentSlot {
+  MAIN_HAND   // Main principale (arme)
+  OFF_HAND    // Main secondaire (bouclier, etc.)
+  HEAD        // Tête
+  CHEST       // Torse
+  LEGS        // Jambes
+  FEET        // Pieds
+  HANDS       // Mains
+  RING_1      // Anneau 1
+  RING_2      // Anneau 2
+  NECKLACE    // Collier
+}
+
+// Types de messages de chat
+enum ChatChannel {
+  LOCAL       // Chat local (même zone/map)
+  GUILD       // Chat de guilde
+  WHISPER     // Message privé
+  SYSTEM      // Messages système
+}
+
+// Rangs de guilde
+enum GuildRank {
+  LEADER      // Chef de guilde
+  OFFICER     // Officier
+  VETERAN     // Vétéran
+  MEMBER      // Membre
+}
+
+// État d'une demande de duel
+enum DuelStatus {
+  PENDING     // En attente de réponse
+  ACCEPTED    // Accepté, en cours
+  DECLINED    // Refusé
+  COMPLETED   // Terminé
+}
+
+// ============================================
+// UTILISATEURS & AUTHENTIFICATION
+// ============================================
 
 model User {
-  id           Int         @id @default(autoincrement())
-  email        String      @unique
+  id           Int        @id @default(autoincrement())
+  email        String     @unique
   passwordHash String
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
   character    Character?
 }
 
+// ============================================
+// PERSONNAGE
+// ============================================
+
 model Character {
-  id                    Int                        @id @default(autoincrement())
-  userId                Int                        @unique
-  user                  User                       @relation(fields: [userId], references: [id])
-  name                  String                     @unique
-  equippedWeaponTypeId  Int?
-  equippedWeaponType    WeaponType?                @relation(fields: [equippedWeaponTypeId], references: [id])
-  positionX             Float                      @default(0)
-  positionY             Float                      @default(0)
-  health                Int                        @default(100)
-  mana                  Int                        @default(50)
-  physicalDefense       Int                        @default(0)
-  magicalDefense        Int                        @default(0)
-  skillBindings         Json                       @default("{}")
-  createdAt             DateTime                   @default(now())
-  updatedAt             DateTime                   @updatedAt
-  weaponProgress        CharacterWeaponProgress[]
-  skills                CharacterSkill[]
-  inventory             InventoryItem[]
-  sessions              PlayerSession?
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Position dans le monde
+  currentMapId Int?
+  currentMap   GameMap? @relation(fields: [currentMapId], references: [id])
+  positionX    Float    @default(100)
+  positionY    Float    @default(100)
+
+  // Stats de base
+  level             Int   @default(1)
+  health            Int   @default(100)
+  maxHealth         Int   @default(100)
+  mana              Int   @default(50)
+  maxMana           Int   @default(50)
+
+  // Stats de combat (type MOBA)
+  physicalAttack      Int   @default(10)
+  magicalAttack       Int   @default(10)
+  physicalDefense     Int   @default(5)
+  magicalDefense      Int   @default(5)
+  attackSpeed         Float @default(1.0)    // Attaques par seconde
+  movementSpeed       Float @default(300.0)  // Pixels par seconde
+  physicalPenetration Int   @default(0)
+  magicalPenetration  Int   @default(0)
+  critChance          Float @default(0.05)   // 5% de base
+  critDamage          Float @default(1.5)    // 150% de dégâts
+
+  // Monnaies
+  gold            Int @default(100)    // Or (monnaie in-game)
+  premiumCurrency Int @default(0)      // Monnaie premium
+
+  // Type d'arme actuellement utilisé (pour le système de progression)
+  equippedWeaponTypeId Int?
+  equippedWeaponType   WeaponType? @relation(fields: [equippedWeaponTypeId], references: [id])
+
+  // Équipement actuel (ID de l'item équipé pour chaque slot)
+  equippedWeaponId Int?
+  equippedWeapon   Item? @relation("EquippedWeapon", fields: [equippedWeaponId], references: [id])
+
+  // Bindings des skills (JSON: { "Q": skillId, "W": skillId, ... })
+  skillBindings Json @default("{}")
+
+  // Apparence du personnage
+  appearance CharacterAppearance?
+
+  // Relations
+  weaponProgress  CharacterWeaponProgress[]
+  elementProgress CharacterElementProgress[]
+  skills          CharacterSkill[]
+  inventory       InventoryItem[]
+  bank            BankItem[]
+  equipment       CharacterEquipment[]
+  transmogs       CharacterTransmog[]
+  session         PlayerSession?
+
+  // Guildes
+  guildMembership GuildMember?
+
+  // Chat
+  sentMessages     ChatMessage[] @relation("SentMessages")
+  receivedMessages ChatMessage[] @relation("ReceivedMessages")
+
+  // PvP
+  sentDuels     DuelRequest[] @relation("DuelChallenger")
+  receivedDuels DuelRequest[] @relation("DuelTarget")
+
+  @@index([currentMapId])
 }
 
+// Apparence du personnage (customisation)
+model CharacterAppearance {
+  id          Int       @id @default(autoincrement())
+  characterId Int       @unique
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  // Apparence de base (configurée à la création)
+  skinTone    Int @default(0)  // Index du ton de peau
+  hairStyle   Int @default(0)  // Index du style de cheveux
+  hairColor   Int @default(0)  // Index de la couleur de cheveux
+  eyeStyle    Int @default(0)  // Index du style des yeux
+  eyeColor    Int @default(0)  // Index de la couleur des yeux
+  faceStyle   Int @default(0)  // Index du style du visage
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// PROGRESSION PAR ARME
+// ============================================
+
 model WeaponType {
-  id            Int                        @id @default(autoincrement())
-  code          WeaponCode                  @unique
-  name          String
-  description   String?
-  skills        Skill[]
-  characterData CharacterWeaponProgress[]
-  items         Item[]
-  equippedBy    Character[]
+  id          Int         @id @default(autoincrement())
+  code        WeaponCode  @unique
+  name        String
+  description String?
+  attackSpeed AttackSpeed @default(NORMAL)
+  damageType  DamageType  @default(PHYSICAL)
+  baseCrit    Float       @default(0.05)  // Crit chance de base pour ce type
+  isRanged    Boolean     @default(false) // Arme à distance?
+
+  skills            Skill[]
+  characterProgress CharacterWeaponProgress[]
+  items             Item[]
+  equippedBy        Character[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model CharacterWeaponProgress {
   id           Int        @id @default(autoincrement())
   characterId  Int
   weaponTypeId Int
-  experience   Int        @default(0)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  character    Character  @relation(fields: [characterId], references: [id])
+  character    Character  @relation(fields: [characterId], references: [id], onDelete: Cascade)
   weaponType   WeaponType @relation(fields: [weaponTypeId], references: [id])
+
+  experience   Int  @default(0)   // XP totale gagnée
+  currentRank  Rank @default(E)   // Rank actuel
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([characterId, weaponTypeId])
 }
 
+// ============================================
+// PROGRESSION PAR ÉLÉMENT MAGIQUE
+// ============================================
+
+model CharacterElementProgress {
+  id          Int          @id @default(autoincrement())
+  characterId Int
+  element     MagicElement
+  character   Character    @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  experience  Int  @default(0)
+  currentRank Rank @default(E)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([characterId, element])
+}
+
+// ============================================
+// SKILLS
+// ============================================
+
 model Skill {
-  id            Int            @id @default(autoincrement())
-  name          String          @unique
-  description   String?
-  category      SkillCategory
-  weaponTypeId  Int?
-  weaponType    WeaponType?    @relation(fields: [weaponTypeId], references: [id])
-  damageType    DamageType
-  baseDamage    Int            @default(0)
-  cooldown      Float          @default(0)
-  resourceCost  Int            @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  characterLink CharacterSkill[]
+  id          Int           @id @default(autoincrement())
+  name        String        @unique
+  description String?
+  iconUrl     String?
+
+  category    SkillCategory @default(ACTIVE)
+  damageType  DamageType    @default(PHYSICAL)
+  element     MagicElement  @default(NONE)
+
+  // Prérequis
+  weaponTypeId      Int?
+  weaponType        WeaponType? @relation(fields: [weaponTypeId], references: [id])
+  requiredRank      Rank        @default(E)      // Rank requis pour débloquer
+  requiredWeaponXp  Int         @default(0)      // XP arme minimum
+  requiredElementXp Int         @default(0)      // XP élément minimum
+  goldCost          Int         @default(0)      // Coût en or pour apprendre
+
+  // Stats du skill
+  baseDamage        Int   @default(0)
+  damageScaling     Float @default(1.0)   // Multiplicateur de l'attaque
+  cooldown          Float @default(1.0)   // En secondes
+  manaCost          Int   @default(10)
+  range             Float @default(100)   // Portée en pixels
+  areaOfEffect      Float @default(0)     // Rayon de zone (0 = mono-cible)
+
+  // Pour le telegraph au sol
+  telegraphShape  String? // "circle", "cone", "line", "rectangle"
+  telegraphWidth  Float?
+  telegraphLength Float?
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  characterLinks CharacterSkill[]
 }
 
 model CharacterSkill {
-  id           Int        @id @default(autoincrement())
-  characterId  Int
-  skillId      Int
-  isUnlocked   Boolean    @default(false)
-  assignedKey  String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  character    Character  @relation(fields: [characterId], references: [id])
-  skill        Skill      @relation(fields: [skillId], references: [id])
+  id          Int       @id @default(autoincrement())
+  characterId Int
+  skillId     Int
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  skill       Skill     @relation(fields: [skillId], references: [id])
+
+  isUnlocked  Boolean @default(false)
+  assignedKey String? // Q, W, E, R, T, A, S, D, F
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([characterId, skillId])
 }
 
+// ============================================
+// ITEMS & INVENTAIRE
+// ============================================
+
 model Item {
-  id            Int                @id @default(autoincrement())
-  name          String             @unique
-  description   String?
-  type          ItemType
-  rarity        ItemRarity         @default(COMMON)
-  weaponTypeId  Int?
-  weaponType    WeaponType?        @relation(fields: [weaponTypeId], references: [id])
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  inventory     InventoryItem[]
-  dropTableItem DropTableItem[]
+  id          Int        @id @default(autoincrement())
+  name        String     @unique
+  description String?
+  iconUrl     String?
+  type        ItemType
+  rarity      ItemRarity @default(COMMON)
+
+  // Pour les armes
+  weaponTypeId Int?
+  weaponType   WeaponType? @relation(fields: [weaponTypeId], references: [id])
+  requiredRank Rank        @default(E) // Rank requis pour équiper
+
+  // Stats de l'item (JSON flexible pour différents types d'items)
+  // Ex: { "physicalAttack": 10, "critChance": 0.05 }
+  stats Json @default("{}")
+
+  // Pour équipement
+  equipmentSlot EquipmentSlot?
+
+  // Stack max (pour consommables/matériaux)
+  maxStack Int @default(1)
+
+  // Prix
+  buyPrice  Int @default(0)  // Prix d'achat chez marchand
+  sellPrice Int @default(0)  // Prix de vente
+
+  // Pour transmog
+  isCosmetic   Boolean @default(false)
+  cosmeticSlot EquipmentSlot?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  inventory        InventoryItem[]
+  bank             BankItem[]
+  dropTableEntries DropTableItem[]
+  equippedBy       Character[]     @relation("EquippedWeapon")
+  equipmentSlots   CharacterEquipment[]
+  transmogs        CharacterTransmog[]
 }
 
 model InventoryItem {
-  id          Int        @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   characterId Int
   itemId      Int
-  quantity    Int        @default(1)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  character   Character  @relation(fields: [characterId], references: [id])
-  item        Item       @relation(fields: [itemId], references: [id])
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  item        Item      @relation(fields: [itemId], references: [id])
+
+  quantity Int @default(1) // Max 9999
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([characterId, itemId])
+}
+
+model BankItem {
+  id          Int       @id @default(autoincrement())
+  characterId Int
+  itemId      Int
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  item        Item      @relation(fields: [itemId], references: [id])
+
+  quantity Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([characterId, itemId])
+}
+
+// ============================================
+// ÉQUIPEMENT & TRANSMOG
+// ============================================
+
+model CharacterEquipment {
+  id          Int           @id @default(autoincrement())
+  characterId Int
+  slot        EquipmentSlot
+  itemId      Int
+  character   Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  item        Item          @relation(fields: [itemId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([characterId, slot])
+}
+
+model CharacterTransmog {
+  id          Int           @id @default(autoincrement())
+  characterId Int
+  slot        EquipmentSlot
+  cosmeticId  Int
+  character   Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  cosmetic    Item          @relation(fields: [cosmeticId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([characterId, slot])
+}
+
+// ============================================
+// MONSTRES & DROPS
+// ============================================
+
+model Monster {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+  iconUrl     String?
+
+  // Stats du monstre
+  level           Int   @default(1)
+  health          Int   @default(100)
+  physicalAttack  Int   @default(10)
+  magicalAttack   Int   @default(0)
+  physicalDefense Int   @default(5)
+  magicalDefense  Int   @default(5)
+  movementSpeed   Float @default(100)
+  attackRange     Float @default(50)
+
+  // Récompenses
+  baseExperience Int @default(10)  // XP de base
+  goldMin        Int @default(1)   // Or minimum
+  goldMax        Int @default(10)  // Or maximum
+
+  // Élément du monstre (pour résistances)
+  element MagicElement @default(NONE)
+
+  // Table de drops
+  dropTableId Int?
+  dropTable   DropTable? @relation(fields: [dropTableId], references: [id])
+
+  // Spawn info
+  respawnTime Int @default(30) // Secondes avant respawn
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  spawns    MonsterSpawn[]
 }
 
 model DropTable {
@@ -169,28 +505,194 @@ model DropTable {
 }
 
 model DropTableItem {
-  id           Int        @id @default(autoincrement())
-  dropTableId  Int
-  itemId       Int
-  probability  Float
-  minQuantity  Int        @default(1)
-  maxQuantity  Int        @default(1)
-  dropTable    DropTable  @relation(fields: [dropTableId], references: [id])
-  item         Item       @relation(fields: [itemId], references: [id])
+  id          Int       @id @default(autoincrement())
+  dropTableId Int
+  itemId      Int
+  dropTable   DropTable @relation(fields: [dropTableId], references: [id], onDelete: Cascade)
+  item        Item      @relation(fields: [itemId], references: [id])
+
+  probability Float @default(0.1) // 0.0 à 1.0
+  minQuantity Int   @default(1)
+  maxQuantity Int   @default(1)
 }
 
-model Monster {
-  id            Int        @id @default(autoincrement())
-  name          String      @unique
-  baseExperience Int       @default(10)
-  dropTableId   Int?
-  dropTable     DropTable? @relation(fields: [dropTableId], references: [id])
+// ============================================
+// MAPS & ZONES
+// ============================================
+
+model GameMap {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique // Identifiant unique de la map
+  name        String
+  description String?
+
+  // Fichier Tiled
+  tiledFile String? // Chemin vers le fichier .tmx
+
+  // Dimensions
+  width  Int @default(800)
+  height Int @default(600)
+
+  // PvP
+  pvpEnabled Boolean @default(false)
+
+  // Connexions vers d'autres maps (JSON: [{ "targetMapId": 1, "x": 100, "y": 50 }])
+  portals Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  characters Character[]
+  spawns     MonsterSpawn[]
+  npcs       NPC[]
 }
+
+model MonsterSpawn {
+  id        Int     @id @default(autoincrement())
+  mapId     Int
+  monsterId Int
+  map       GameMap @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  monster   Monster @relation(fields: [monsterId], references: [id])
+
+  // Position de spawn
+  positionX Float
+  positionY Float
+
+  // Zone de patrouille (rayon autour du point de spawn)
+  patrolRadius Float @default(100)
+
+  // Nombre max de ce monstre à cet emplacement
+  maxCount Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// PNJ & MAITRES
+// ============================================
+
+model NPC {
+  id          Int      @id @default(autoincrement())
+  name        String
+  title       String?  // "Maître d'épée", "Marchand", etc.
+  dialogue    Json     @default("[]") // Dialogues du PNJ
+  spriteUrl   String?
+
+  mapId     Int
+  map       GameMap @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  positionX Float
+  positionY Float
+
+  // Type de PNJ
+  isWeaponMaster  Boolean      @default(false)
+  weaponMasterFor WeaponCode?  // Si maître d'arme, quel type?
+
+  isElementMaster  Boolean       @default(false)
+  elementMasterFor MagicElement? // Si maître d'élément, lequel?
+
+  isMerchant Boolean @default(false)
+  isBanker   Boolean @default(false)
+
+  // Items vendus (si marchand)
+  shopItems Json @default("[]") // [{ "itemId": 1, "price": 100 }]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// GUILDES
+// ============================================
+
+model Guild {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  tag         String  @unique // Tag court [TAG]
+  description String?
+  iconUrl     String?
+
+  // Banque de guilde
+  gold Int @default(0)
+
+  // Stats
+  level      Int @default(1)
+  experience Int @default(0)
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  members   GuildMember[]
+}
+
+model GuildMember {
+  id          Int       @id @default(autoincrement())
+  guildId     Int
+  characterId Int       @unique
+  guild       Guild     @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  rank GuildRank @default(MEMBER)
+  note String?   // Note visible par les officiers
+
+  joinedAt DateTime @default(now())
+}
+
+// ============================================
+// CHAT
+// ============================================
+
+model ChatMessage {
+  id         Int         @id @default(autoincrement())
+  senderId   Int
+  receiverId Int?        // Null si pas un whisper
+  sender     Character   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   Character?  @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: SetNull)
+
+  channel ChatChannel
+  mapId   Int?        // Pour les messages locaux
+  guildId Int?        // Pour les messages de guilde
+
+  content String
+
+  createdAt DateTime @default(now())
+
+  @@index([channel, mapId])
+  @@index([channel, guildId])
+  @@index([senderId, receiverId])
+}
+
+// ============================================
+// PVP - DUELS
+// ============================================
+
+model DuelRequest {
+  id           Int       @id @default(autoincrement())
+  challengerId Int
+  targetId     Int
+  challenger   Character @relation("DuelChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  target       Character @relation("DuelTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  status DuelStatus @default(PENDING)
+
+  // Résultat
+  winnerId Int?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+// ============================================
+// SESSIONS
+// ============================================
 
 model PlayerSession {
-  id          Int        @id @default(autoincrement())
-  characterId Int        @unique
-  socketId    String
-  lastActive  DateTime   @default(now())
-  character   Character  @relation(fields: [characterId], references: [id])
+  id          Int       @id @default(autoincrement())
+  characterId Int       @unique
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  socketId   String
+  lastActive DateTime @default(now())
+
+  createdAt DateTime @default(now())
 }

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { Socket } from 'socket.io-client';
 
 import { MainScene } from './scenes/MainScene';
+import type { SkillSlot } from './types';
 
 interface CreateGameOptions {
   container: HTMLElement;
@@ -9,6 +10,7 @@ interface CreateGameOptions {
   characterId: number;
   position: { x: number; y: number };
   onReward?: (payload: { experience: number; drops: { itemId: number; quantity: number }[] }) => void;
+  onSkillCast?: (slot: SkillSlot) => void;
 }
 
 export const createSekaiGame = (options: CreateGameOptions) =>
@@ -19,14 +21,15 @@ export const createSekaiGame = (options: CreateGameOptions) =>
     parent: options.container,
     backgroundColor: '#0f111f',
     physics: {
-      default: 'arcade'
+      default: 'arcade',
     },
     scene: [
       new MainScene({
         socket: options.socket,
         characterId: options.characterId,
         initialPosition: options.position,
-        onReward: options.onReward
-      })
-    ]
+        onReward: options.onReward,
+        onSkillCast: options.onSkillCast,
+      }),
+    ],
   });

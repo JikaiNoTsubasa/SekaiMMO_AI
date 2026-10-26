@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.gameRouter = void 0;
+const express_1 = require("express");
+const gameController_1 = require("../controllers/gameController");
+const asyncHandler_1 = require("../middleware/asyncHandler");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+exports.gameRouter = (0, express_1.Router)();
+exports.gameRouter.use(authMiddleware_1.authenticate);
+exports.gameRouter.get('/state', (0, asyncHandler_1.asyncHandler)(gameController_1.getGameState));

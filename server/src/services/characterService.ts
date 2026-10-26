@@ -74,7 +74,7 @@ export const characterService = {
       throw new HttpError('Weapon types are not seeded', 500);
     }
 
-    const defaultWeapon = weaponTypes.find((weapon) => weapon.code === WeaponCode.SWORD_SHIELD) ?? weaponTypes[0];
+    const defaultWeapon = weaponTypes.find((weapon) => weapon.code === WeaponCode.SWORD) ?? weaponTypes[0];
 
     const character = await prisma.$transaction(async (tx) => {
       const created = await tx.character.create({
@@ -92,6 +92,57 @@ export const characterService = {
           weaponTypeId: weapon.id
         }))
       });
+
+      // Débloquer le skill de base de l'arme équipée (rang E, coût 0)
+      const basicSkill = await tx.skill.findFirst({
+        where: {
+          weaponTypeId: defaultWeapon.id,
+          requiredRank: 'E',
+          goldCost: 0,
+          category: 'ACTIVE',
+        },
+        orderBy: { id: 'asc' },
+      });
+
+      if (basicSkill) {
+        // Créer le lien skill-personnage
+        await tx.characterSkill.create({
+          data: {
+            characterId: created.id,
+            skillId: basicSkill.id,
+            isUnlocked: true,
+            assignedKey: 'Q',
+          },
+        });
+
+        // Assigner le skill au slot Q
+        await tx.character.update({
+          where: { id: created.id },
+          data: {
+            skillBindings: { Q: basicSkill.id },
+          },
+        });
+      }
+
+      // Ajouter l'arme de départ à l'inventaire (Épée de Recrue)
+      const starterWeapon = await tx.item.findFirst({
+        where: {
+          weaponTypeId: defaultWeapon.id,
+          requiredRank: 'E',
+          type: 'WEAPON',
+        },
+        orderBy: { id: 'asc' },
+      });
+
+      if (starterWeapon) {
+        await tx.inventoryItem.create({
+          data: {
+            characterId: created.id,
+            itemId: starterWeapon.id,
+            quantity: 1,
+          },
+        });
+      }
 
       return created;
     });
@@ -260,7 +311,7 @@ export const characterService = {
           }
         : {},
       include: {
-        characterLink: {
+        characterLinks: {
           where: { characterId }
         }
       }
@@ -268,7 +319,7 @@ export const characterService = {
 
     return skills.map((skill) => ({
       skill,
-      characterSkill: skill.characterLink[0] ?? null
+      characterSkill: skill.characterLinks[0] ?? null
     }));
   },
 

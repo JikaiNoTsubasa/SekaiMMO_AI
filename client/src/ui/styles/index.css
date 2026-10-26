@@ -1,0 +1,11 @@
+/* UI Styles - Import centralisé */
+/* SekaiMMO v2.0 */
+
+@import './main.css';
+@import './skillbar.css';
+@import './inventory.css';
+@import './skills-menu.css';
+@import './chat.css';
+@import './bank.css';
+@import './guild.css';
+@import './settings.css';

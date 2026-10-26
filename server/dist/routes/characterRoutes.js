@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.characterRouter = void 0;
+const express_1 = require("express");
+const characterController_1 = require("../controllers/characterController");
+const asyncHandler_1 = require("../middleware/asyncHandler");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+exports.characterRouter = (0, express_1.Router)();
+exports.characterRouter.use(authMiddleware_1.authenticate);
+exports.characterRouter.post('/', (0, asyncHandler_1.asyncHandler)(characterController_1.createCharacter));
+exports.characterRouter.get('/me', (0, asyncHandler_1.asyncHandler)(characterController_1.getCharacter));
+exports.characterRouter.get('/inventory', (0, asyncHandler_1.asyncHandler)(characterController_1.getInventory));
+exports.characterRouter.get('/skills', (0, asyncHandler_1.asyncHandler)(characterController_1.listSkills));
+exports.characterRouter.post('/skills/assign', (0, asyncHandler_1.asyncHandler)(characterController_1.assignSkill));
+exports.characterRouter.post('/skills/unlock', (0, asyncHandler_1.asyncHandler)(characterController_1.unlockSkill));

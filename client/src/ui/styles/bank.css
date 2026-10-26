@@ -1,0 +1,147 @@
+/* Bank Panel - Interface de banque */
+
+.bank-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 450px;
+  max-height: 85vh;
+  background: rgba(15, 18, 35, 0.98);
+  border: 1px solid rgba(90, 110, 180, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  z-index: 150;
+  display: none;
+  flex-direction: column;
+}
+
+.bank-panel.visible {
+  display: flex;
+}
+
+.bank-content {
+  padding: 0.8rem;
+  overflow-y: auto;
+}
+
+.bank-section, .inventory-section {
+  margin-bottom: 0.8rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #a0b0d0;
+}
+
+.slots-used {
+  font-size: 0.8rem;
+  color: #8090b0;
+}
+
+.bank-grid, .inventory-grid {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  background: rgba(20, 25, 45, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(60, 75, 120, 0.3);
+}
+
+.bank-slot {
+  position: relative;
+  aspect-ratio: 1;
+  background: rgba(25, 30, 55, 0.8);
+  border: 2px solid rgba(60, 75, 120, 0.4);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bank-slot:hover {
+  background: rgba(35, 42, 70, 0.9);
+  border-color: rgba(100, 120, 180, 0.6);
+}
+
+.bank-slot.selected {
+  border-color: rgba(120, 180, 255, 0.8);
+  box-shadow: 0 0 8px rgba(100, 150, 255, 0.3);
+}
+
+.bank-slot.has-item {
+  border-color: rgba(80, 100, 160, 0.5);
+}
+
+.bank-slot .slot-icon {
+  position: absolute;
+  inset: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.bank-slot .slot-quantity {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.bank-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(60, 75, 120, 0.3);
+  border-bottom: 1px solid rgba(60, 75, 120, 0.3);
+  margin: 0.5rem 0;
+}
+
+.bank-actions button {
+  padding: 0.5rem 1rem;
+  background: rgba(40, 50, 80, 0.8);
+  border: 1px solid rgba(80, 100, 160, 0.4);
+  border-radius: 6px;
+  color: #c0d0f0;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bank-actions button:hover:not(:disabled) {
+  background: rgba(55, 65, 100, 0.9);
+  border-color: rgba(100, 130, 200, 0.5);
+}
+
+.bank-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-deposit-all {
+  background: rgba(60, 80, 60, 0.7) !important;
+  border-color: rgba(80, 130, 80, 0.5) !important;
+}
+
+.btn-deposit-all:hover {
+  background: rgba(70, 100, 70, 0.8) !important;
+}
