@@ -187,6 +187,13 @@ export class GameServer {
     const character = socket.data.character;
 
     console.log(`[GameServer] Player ${characterId} connected`);
+    console.log(`[GameServer] Character data:`, {
+      id: character.id,
+      name: character.name,
+      currentMapId: character.currentMapId,
+      positionX: character.positionX,
+      positionY: character.positionY,
+    });
 
     // Créer/mettre à jour la session
     await prisma.playerSession.upsert({
@@ -203,6 +210,35 @@ export class GameServer {
 
     // Récupérer la map du joueur
     const mapId = character.currentMapId ?? 1;
+    console.log(`[GameServer] Player ${characterId} joining map ${mapId}`);
+
+    // Charger les données de la map depuis la DB
+    const mapData = await prisma.gameMap.findUnique({
+      where: { id: mapId },
+    });
+
+    if (mapData) {
+      console.log(`[GameServer] Map found:`, {
+        id: mapData.id,
+        code: mapData.code,
+        name: mapData.name,
+        width: mapData.width,
+        height: mapData.height,
+      });
+
+      // Envoyer les données de la map au client
+      socket.emit('map:data', {
+        id: mapData.id,
+        code: mapData.code,
+        name: mapData.name,
+        width: mapData.width,
+        height: mapData.height,
+        pvpEnabled: mapData.pvpEnabled,
+      });
+    } else {
+      console.error(`[GameServer] Map ${mapId} not found in database!`);
+    }
+
     await this.joinMap(socket, mapId);
 
     // Enregistrer les handlers
@@ -210,6 +246,7 @@ export class GameServer {
 
     // Envoyer les monstres de la map
     const monsters = this.spawnManager.getMonstersOnMap(mapId);
+    console.log(`[GameServer] Sending ${monsters.length} monsters to player ${characterId}`);
     socket.emit('monsters:initial', monsters.map((m) => ({
       spawnId: m.spawnId,
       monsterId: m.monsterId,
@@ -226,6 +263,8 @@ export class GameServer {
     const otherPlayers = Array.from(this.connectedPlayers.values())
       .filter((p) => p.mapId === mapId && p.characterId !== characterId);
 
+    console.log(`[GameServer] Sending ${otherPlayers.length} other players to player ${characterId}`);
+
     for (const player of otherPlayers) {
       const playerChar = await prisma.character.findUnique({
         where: { id: player.characterId },
@@ -235,6 +274,8 @@ export class GameServer {
         socket.emit('player:joined', { character: playerChar });
       }
     }
+
+    console.log(`[GameServer] Player ${characterId} connection setup complete`);
   }
 
   /**
@@ -244,9 +285,12 @@ export class GameServer {
     const characterId = socket.data.characterId as number;
     const character = socket.data.character;
 
+    console.log(`[GameServer] joinMap called for player ${characterId}, mapId=${mapId}`);
+
     // Quitter l'ancienne map
     const oldPlayer = this.connectedPlayers.get(characterId);
     if (oldPlayer) {
+      console.log(`[GameServer] Player ${characterId} leaving map ${oldPlayer.mapId}`);
       socket.leave(`map:${oldPlayer.mapId}`);
       socket.to(`map:${oldPlayer.mapId}`).emit('player:left', { characterId });
       this.monsterAI.removePlayer(characterId);
@@ -254,17 +298,22 @@ export class GameServer {
 
     // Rejoindre la nouvelle map
     socket.join(`map:${mapId}`);
+    console.log(`[GameServer] Player ${characterId} joined room map:${mapId}`);
 
     // Initialiser la map si nécessaire
     if (!this.initializedMaps.has(mapId)) {
+      console.log(`[GameServer] Map ${mapId} not initialized yet, initializing...`);
       await this.spawnManager.initializeMap(mapId);
       this.initializedMaps.add(mapId);
 
       // Initialiser l'AI pour les monstres de la map
       const monsters = this.spawnManager.getMonstersOnMap(mapId);
+      console.log(`[GameServer] Initialized ${monsters.length} monsters AI for map ${mapId}`);
       for (const monster of monsters) {
         this.monsterAI.initializeMonster(monster);
       }
+    } else {
+      console.log(`[GameServer] Map ${mapId} already initialized`);
     }
 
     // Enregistrer le joueur

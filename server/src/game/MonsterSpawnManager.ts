@@ -55,13 +55,18 @@ export class MonsterSpawnManager {
    * Initialise le spawn manager pour une map
    */
   async initializeMap(mapId: number): Promise<void> {
+    console.log(`[SpawnManager] Initializing map ${mapId}...`);
+
     // Charger les points de spawn de la map
     const spawns = await prisma.monsterSpawn.findMany({
       where: { mapId },
       include: { monster: true },
     });
 
+    console.log(`[SpawnManager] Found ${spawns.length} spawn points for map ${mapId}`);
+
     for (const spawn of spawns) {
+      console.log(`[SpawnManager] Spawn point ${spawn.id}: monster=${spawn.monster.name}, pos=(${spawn.positionX}, ${spawn.positionY}), count=${spawn.maxCount}`);
       const spawnPoint: SpawnPoint = {
         id: spawn.id,
         mapId: spawn.mapId,

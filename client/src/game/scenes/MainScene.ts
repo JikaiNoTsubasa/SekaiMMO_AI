@@ -58,6 +58,10 @@ export class MainScene extends Phaser.Scene {
   private combatManager!: CombatManager;
   private mapLoader!: TiledMapLoader;
 
+  // Tilemap et collisions
+  private tilemap: Phaser.Tilemaps.Tilemap | null = null;
+  private collisionLayer: Phaser.Tilemaps.TilemapLayer | null = null;
+
   // Joueur local
   private player!: Phaser.GameObjects.Arc;
   private playerHealthBar!: Phaser.GameObjects.Graphics;
@@ -123,14 +127,30 @@ export class MainScene extends Phaser.Scene {
   }
 
   preload(): void {
+    console.log('[MainScene] preload() called');
+
+    // Ajouter des listeners pour le chargement
+    this.load.on('filecomplete', (key: string, type: string) => {
+      console.log(`[MainScene] Loaded: ${type} - ${key}`);
+    });
+
+    this.load.on('loaderror', (file: Phaser.Loader.File) => {
+      console.error(`[MainScene] Failed to load: ${file.key} from ${file.url}`);
+    });
+
     // Charger la map Tiled JSON
+    console.log('[MainScene] Loading tilemap: maps/starting_village.tmj');
     this.load.tilemapTiledJSON('starting_village', 'maps/starting_village.tmj');
 
     // Charger l'image du tileset
+    console.log('[MainScene] Loading tileset: assets/tilesets/SunnysideWorld.png');
     this.load.image('CityBase16', 'assets/tilesets/SunnysideWorld.png');
   }
 
   create(): void {
+    console.log('[MainScene] create() called');
+    console.log('[MainScene] Initial position:', this.options.initialPosition);
+
     // Initialiser les systèmes
     this.initializeSystems();
 
@@ -151,6 +171,8 @@ export class MainScene extends Phaser.Scene {
 
     // Événement de nettoyage
     this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
+
+    console.log('[MainScene] create() complete');
   }
 
   /**
@@ -181,24 +203,38 @@ export class MainScene extends Phaser.Scene {
    * Charge la map actuelle
    */
   private loadMap(): void {
+    console.log('[MainScene] loadMap() called');
+    console.log('[MainScene] Attempting to load tilemap with key: starting_village');
+
     // Créer la tilemap depuis le fichier JSON
     const map = this.make.tilemap({ key: 'starting_village' });
 
     if (!map) {
-      console.error('[MainScene] Failed to create tilemap');
+      console.error('[MainScene] Failed to create tilemap - map is null/undefined');
       // Fallback sur la map procédurale
       this.mapLoader.createProceduralMap(this.mapData);
       return;
     }
 
+    this.tilemap = map;
+
+    console.log('[MainScene] Tilemap created successfully');
+    console.log('[MainScene] Map dimensions:', map.width, 'x', map.height, 'tiles');
+    console.log('[MainScene] Tile size:', map.tileWidth, 'x', map.tileHeight, 'px');
+    console.log('[MainScene] Available tilesets:', map.tilesets.map(t => t.name));
+    console.log('[MainScene] Available layers:', map.layers.map(l => l.name));
+
     // Ajouter le tileset - le nom doit correspondre au nom dans le fichier .tsx
     const tileset = map.addTilesetImage('CityBase16', 'CityBase16');
 
     if (!tileset) {
-      console.error('[MainScene] Failed to add tileset');
+      console.error('[MainScene] Failed to add tileset "CityBase16"');
+      console.log('[MainScene] Check that the tileset name matches the one in the .tmj file');
       this.mapLoader.createProceduralMap(this.mapData);
       return;
     }
+
+    console.log('[MainScene] Tileset added successfully:', tileset.name);
 
     // Créer les layers
     const floorLayer = map.createLayer('Floor', tileset);
@@ -206,17 +242,33 @@ export class MainScene extends Phaser.Scene {
 
     if (floorLayer) {
       floorLayer.setDepth(0);
+      console.log('[MainScene] Floor layer created');
+    } else {
+      console.warn('[MainScene] Floor layer not found or failed to create');
     }
 
     if (objectsLayer) {
-      objectsLayer.setDepth(1);
+      objectsLayer.setDepth(10); // Au-dessus du joueur pour les bâtiments
+      console.log('[MainScene] ObjectsLayer created');
+
+      // Configurer les collisions sur le layer ObjectsLayer
+      // Toutes les tuiles non-vides (index > 0) sont des collisions
+      objectsLayer.setCollisionByExclusion([-1, 0]);
+      this.collisionLayer = objectsLayer;
+
+      // Debug: afficher les tuiles de collision (décommenter pour visualiser)
+      // this.showCollisionDebug(objectsLayer);
+
+      console.log('[MainScene] Collisions enabled on ObjectsLayer');
+    } else {
+      console.warn('[MainScene] ObjectsLayer not found or failed to create');
     }
 
     // Mettre à jour les dimensions de la map
     this.mapData.width = map.widthInPixels;
     this.mapData.height = map.heightInPixels;
 
-    console.log(`[MainScene] Map loaded: ${map.widthInPixels}x${map.heightInPixels}px`);
+    console.log(`[MainScene] Map loaded successfully: ${map.widthInPixels}x${map.heightInPixels}px`);
   }
 
   /**
@@ -279,6 +331,24 @@ export class MainScene extends Phaser.Scene {
    */
   private setupSocketEvents(): void {
     const socket = this.options.socket;
+
+    console.log('[MainScene] Setting up socket events...');
+
+    // Données de la map (reçues lors de la connexion)
+    socket.on('map:data', (payload: { id: number; code: string; name: string; width: number; height: number; pvpEnabled: boolean }) => {
+      console.log('[MainScene] Received map:data from server:', payload);
+      this.mapData = {
+        id: payload.id,
+        code: payload.code,
+        name: payload.name,
+        width: payload.width,
+        height: payload.height,
+        pvpEnabled: payload.pvpEnabled,
+        portals: [],
+      };
+      // Mettre à jour les bounds de la caméra
+      this.cameras.main.setBounds(0, 0, payload.width, payload.height);
+    });
 
     // Mouvement des joueurs
     socket.on('player:moved', (payload: PlayerMovedEvent) => {
@@ -436,7 +506,7 @@ export class MainScene extends Phaser.Scene {
       const nextX = this.player.x + Math.cos(moveAngle) * velocity;
       const nextY = this.player.y + Math.sin(moveAngle) * velocity;
 
-      if (!this.mapLoader.checkCollision(nextX, nextY)) {
+      if (!this.checkCollision(nextX, nextY)) {
         this.player.x = Phaser.Math.Clamp(nextX, 0, this.mapData.width);
         this.player.y = Phaser.Math.Clamp(nextY, 0, this.mapData.height);
         this.updatePlayerBars();
@@ -490,7 +560,7 @@ export class MainScene extends Phaser.Scene {
     const nextY = this.player.y + Math.sin(angle) * velocity;
 
     // Vérifier les collisions
-    if (!this.mapLoader.checkCollision(nextX, nextY)) {
+    if (!this.checkCollision(nextX, nextY)) {
       this.player.x = Phaser.Math.Clamp(nextX, 0, this.mapData.width);
       this.player.y = Phaser.Math.Clamp(nextY, 0, this.mapData.height);
     }
@@ -953,6 +1023,42 @@ export class MainScene extends Phaser.Scene {
    */
   getPlayerPosition(): { x: number; y: number } {
     return { x: this.player.x, y: this.player.y };
+  }
+
+  /**
+   * Affiche les tuiles de collision en surbrillance (debug)
+   */
+  private showCollisionDebug(layer: Phaser.Tilemaps.TilemapLayer): void {
+    const debugGraphics = this.add.graphics();
+    debugGraphics.setDepth(100);
+
+    layer.renderDebug(debugGraphics, {
+      tileColor: null, // Ne pas colorier les tuiles normales
+      collidingTileColor: new Phaser.Display.Color(255, 0, 0, 100), // Rouge transparent pour les collisions
+      faceColor: new Phaser.Display.Color(0, 255, 0, 100), // Vert pour les faces de collision
+    });
+
+    console.log('[MainScene] Collision debug visualization enabled');
+  }
+
+  /**
+   * Vérifie la collision à une position donnée
+   */
+  private checkCollision(x: number, y: number): boolean {
+    // Vérifier les limites de la map
+    if (x < 0 || y < 0 || x > this.mapData.width || y > this.mapData.height) {
+      return true;
+    }
+
+    // Vérifier le layer de collision
+    if (this.collisionLayer) {
+      const tile = this.collisionLayer.getTileAtWorldXY(x, y);
+      if (tile && tile.index > 0) {
+        return true; // Collision détectée
+      }
+    }
+
+    return false;
   }
 
   /**

@@ -85,7 +85,7 @@
         {
          "columns":64,
          "firstgid":1,
-         "image":"..\/\assets\tilesets\/SunnysideWorld.png",
+         "image":"../assets/tilesets/SunnysideWorld.png",
          "imageheight":1024,
          "imagewidth":1024,
          "margin":0,
