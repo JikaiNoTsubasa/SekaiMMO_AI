@@ -21,7 +21,7 @@ client/
 │   │   └── audio/            # Sons et musiques
 │   │       ├── sfx/          # Effets sonores
 │   │       └── music/        # Musiques d'ambiance
-│   └── maps/                 # Fichiers Tiled (.json)
+│   └── maps/                 # Fichiers Tiled (.tmj)
 ```
 
 ---

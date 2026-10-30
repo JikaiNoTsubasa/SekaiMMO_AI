@@ -33,7 +33,7 @@ export interface MainSceneOptions {
 // État d'un autre joueur
 interface OtherPlayer {
   characterId: number;
-  sprite: Phaser.GameObjects.Arc;
+  sprite: Phaser.GameObjects.Rectangle;
   nameText: Phaser.GameObjects.Text;
   healthBar: Phaser.GameObjects.Graphics;
   data: Partial<CharacterData>;
@@ -42,7 +42,7 @@ interface OtherPlayer {
 // État d'un monstre
 interface MonsterInstance {
   spawnId: number;
-  sprite: Phaser.GameObjects.Arc;
+  sprite: Phaser.GameObjects.Rectangle;
   nameText: Phaser.GameObjects.Text;
   healthBar: Phaser.GameObjects.Graphics;
   data: MonsterData;
@@ -63,7 +63,7 @@ export class MainScene extends Phaser.Scene {
   private collisionLayer: Phaser.Tilemaps.TilemapLayer | null = null;
 
   // Joueur local
-  private player!: Phaser.GameObjects.Arc;
+  private player!: Phaser.GameObjects.Rectangle;
   private playerHealthBar!: Phaser.GameObjects.Graphics;
   private playerManaBar!: Phaser.GameObjects.Graphics;
 
@@ -86,7 +86,7 @@ export class MainScene extends Phaser.Scene {
 
   // Auto-attaque
   private autoAttackTarget: number | null = null;
-  private readonly AUTO_ATTACK_RANGE = 150; // Portée d'auto-attaque
+  private readonly AUTO_ATTACK_RANGE = 80; // Portée d'auto-attaque (alignée sur compétences de base)
 
   constructor(options: MainSceneOptions) {
     super('MainScene');
@@ -195,7 +195,7 @@ export class MainScene extends Phaser.Scene {
     // Map Loader pour les cartes Tiled
     this.mapLoader = new TiledMapLoader(this, {
       basePath: 'assets/maps/',
-      defaultTileSize: 32,
+      defaultTileSize: 16,
     });
   }
 
@@ -278,8 +278,9 @@ export class MainScene extends Phaser.Scene {
     const startX = Phaser.Math.Clamp(this.characterData.positionX, 0, this.mapData.width);
     const startY = Phaser.Math.Clamp(this.characterData.positionY, 0, this.mapData.height);
 
-    // Sprite du joueur (cercle pour le moment)
-    this.player = this.add.circle(startX, startY, 16, 0x4f9dff);
+    // Sprite du joueur (rectangle 16x32 pixel art)
+    this.player = this.add.rectangle(startX, startY, 16, 32, 0x4f9dff);
+    this.player.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas (29/32)
     this.player.setDepth(10);
 
     // Barre de vie
@@ -388,6 +389,16 @@ export class MainScene extends Phaser.Scene {
       this.updateMonsterHealth(payload);
     });
 
+    // Mouvement du monstre
+    socket.on('monster:moved', (payload: { spawnId: number; positionX: number; positionY: number }) => {
+      this.handleMonsterMoved(payload);
+    });
+
+    // Attaque du monstre sur le joueur
+    socket.on('monster:attack', (payload: { spawnId: number; targetId: number; damage: number; damageType: string; element: string }) => {
+      this.handleMonsterAttack(payload);
+    });
+
     // Changement de map
     socket.on('map:change', (payload: { mapCode: string; positionX: number; positionY: number }) => {
       this.options.onMapChange?.(payload.mapCode);
@@ -457,8 +468,8 @@ export class MainScene extends Phaser.Scene {
     // Mise à jour des cooldowns
     this.updateCooldowns(delta);
 
-    // Broadcast de position périodique
-    if (time - this.lastBroadcast > 180 && (this.moveTarget || this.autoAttackTarget)) {
+    // Broadcast de position périodique (toujours, pour sync avec le serveur)
+    if (time - this.lastBroadcast > 100) {
       this.broadcastPosition();
       this.lastBroadcast = time;
     }
@@ -629,8 +640,10 @@ export class MainScene extends Phaser.Scene {
    */
   private getMonsterAtPosition(x: number, y: number): MonsterInstance | null {
     for (const monster of this.monsters.values()) {
-      const distance = Phaser.Math.Distance.Between(x, y, monster.sprite.x, monster.sprite.y);
-      if (distance < 25) { // Rayon de détection
+      // Détection basée sur le rectangle 16x32
+      const dx = Math.abs(x - monster.sprite.x);
+      const dy = Math.abs(y - monster.sprite.y);
+      if (dx < 12 && dy < 20) {
         return monster;
       }
     }
@@ -656,6 +669,18 @@ export class MainScene extends Phaser.Scene {
 
     // Vérifier le mana
     if (this.characterData.mana < skill.manaCost) return;
+
+    // Vérifier la portée
+    const distanceToTarget = Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      targetX,
+      targetY
+    );
+    if (distanceToTarget > skill.range) {
+      console.log(`[MainScene] Skill ${skill.name} out of range: ${distanceToTarget} > ${skill.range}`);
+      return;
+    }
 
     // Calculer la direction
     const direction = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY);
@@ -809,12 +834,55 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  private handleMonsterMoved(payload: { spawnId: number; positionX: number; positionY: number }): void {
+    const monster = this.monsters.get(payload.spawnId);
+    if (!monster) return;
+
+    // Interpoler vers la nouvelle position
+    this.tweens.add({
+      targets: monster.sprite,
+      x: payload.positionX,
+      y: payload.positionY,
+      duration: 100,
+      onUpdate: () => {
+        // Mettre à jour la position du texte et de la barre de vie
+        monster.nameText.setPosition(monster.sprite.x, monster.sprite.y - 35);
+        this.updateMonsterVisuals(monster);
+      },
+    });
+  }
+
+  private handleMonsterAttack(payload: { spawnId: number; targetId: number; damage: number; damageType: string; element: string }): void {
+    // Vérifier si c'est le joueur local qui est attaqué
+    if (payload.targetId !== this.characterData.id) return;
+
+    // Appliquer les dégâts localement
+    this.characterData.health = Math.max(0, this.characterData.health - payload.damage);
+    this.updatePlayerBars();
+
+    // Afficher le texte de dégâts
+    this.combatManager.showDamageText({
+      x: this.player.x,
+      y: this.player.y,
+      damage: payload.damage,
+      isCritical: false,
+      damageType: payload.damageType as 'PHYSICAL' | 'MAGICAL' | 'PURE',
+      element: payload.element as any,
+    });
+
+    // Flash rouge si dégâts importants
+    if (payload.damage > this.characterData.maxHealth * 0.2) {
+      this.cameras.main.flash(80, 255, 0, 0, false, 0.3);
+    }
+  }
+
   // === Gestion des entités ===
 
   private addOtherPlayer(data: Partial<CharacterData>): void {
     if (!data.id || data.id === this.characterData.id) return;
 
-    const sprite = this.add.circle(data.positionX ?? 0, data.positionY ?? 0, 14, 0xff6b6b);
+    const sprite = this.add.rectangle(data.positionX ?? 0, data.positionY ?? 0, 16, 32, 0xff6b6b);
+    sprite.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas
     sprite.setDepth(8);
 
     const nameText = this.add.text(0, 0, data.name ?? 'Player', {
@@ -854,7 +922,7 @@ export class MainScene extends Phaser.Scene {
   private updateOtherPlayerVisuals(other: OtherPlayer): void {
     const { sprite, nameText, healthBar, data } = other;
 
-    nameText.setPosition(sprite.x, sprite.y - 25);
+    nameText.setPosition(sprite.x, sprite.y - 35);
 
     healthBar.clear();
     const healthPercent = (data.health ?? 100) / (data.maxHealth ?? 100);
@@ -862,16 +930,17 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 4;
 
     healthBar.fillStyle(0x333333);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 35, barWidth, barHeight);
+    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth, barHeight);
 
     healthBar.fillStyle(0x00ff00);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 35, barWidth * healthPercent, barHeight);
+    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth * healthPercent, barHeight);
   }
 
   private spawnMonster(data: MonsterData): void {
     if (this.monsters.has(data.spawnId)) return;
 
-    const sprite = this.add.circle(data.positionX, data.positionY, 18, 0xaa4444);
+    const sprite = this.add.rectangle(data.positionX, data.positionY, 16, 32, 0xaa4444);
+    sprite.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas
     sprite.setDepth(7);
 
     // Rendre le sprite interactif pour le ciblage
@@ -885,7 +954,7 @@ export class MainScene extends Phaser.Scene {
       }
     });
 
-    const nameText = this.add.text(data.positionX, data.positionY - 30, `${data.name} Lv.${data.level}`, {
+    const nameText = this.add.text(data.positionX, data.positionY - 35, `${data.name} Lv.${data.level}`, {
       fontSize: '10px',
       color: '#ff8888',
       stroke: '#000000',
@@ -948,10 +1017,10 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 5;
 
     healthBar.fillStyle(0x333333);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 40, barWidth, barHeight);
+    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth, barHeight);
 
     healthBar.fillStyle(healthPercent > 0.3 ? 0xff4444 : 0xff0000);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 40, barWidth * healthPercent, barHeight);
+    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth * healthPercent, barHeight);
   }
 
   // === Utilitaires ===
@@ -967,20 +1036,20 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 4;
 
     this.playerHealthBar.fillStyle(0x333333);
-    this.playerHealthBar.fillRect(x - barWidth / 2, y - 30, barWidth, barHeight);
+    this.playerHealthBar.fillRect(x - barWidth / 2, y - 34, barWidth, barHeight);
 
     this.playerHealthBar.fillStyle(0x00ff00);
-    this.playerHealthBar.fillRect(x - barWidth / 2, y - 30, barWidth * healthPercent, barHeight);
+    this.playerHealthBar.fillRect(x - barWidth / 2, y - 34, barWidth * healthPercent, barHeight);
 
     // Barre de mana
     this.playerManaBar.clear();
     const manaPercent = this.characterData.mana / this.characterData.maxMana;
 
     this.playerManaBar.fillStyle(0x333333);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 25, barWidth, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y - 29, barWidth, barHeight);
 
     this.playerManaBar.fillStyle(0x0088ff);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 25, barWidth * manaPercent, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y - 29, barWidth * manaPercent, barHeight);
   }
 
   private broadcastPosition(): void {

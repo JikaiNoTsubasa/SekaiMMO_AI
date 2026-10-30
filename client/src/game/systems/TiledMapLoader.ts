@@ -80,7 +80,7 @@ export class TiledMapLoader {
     this.scene = scene;
     this.config = {
       basePath: config?.basePath ?? 'assets/maps/',
-      defaultTileSize: config?.defaultTileSize ?? 32,
+      defaultTileSize: config?.defaultTileSize ?? 16,
     };
   }
 

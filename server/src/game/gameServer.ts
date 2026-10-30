@@ -863,6 +863,15 @@ export class GameServer {
       return;
     }
 
+    // Vérifier la portée du skill
+    const distanceToTarget = Math.sqrt(
+      Math.pow(data.targetX - player.positionX, 2) + Math.pow(data.targetY - player.positionY, 2)
+    );
+    if (distanceToTarget > skill.range) {
+      socket.emit('skill:failed', { reason: 'Out of range' });
+      return;
+    }
+
     // Déduire le mana
     await prisma.character.update({
       where: { id: characterId },

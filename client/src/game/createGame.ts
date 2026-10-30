@@ -20,8 +20,20 @@ export const createSekaiGame = (options: CreateGameOptions) =>
     height: 540,
     parent: options.container,
     backgroundColor: '#0f111f',
+    pixelArt: true,
+    antialias: false,
+    roundPixels: true,
+    scale: {
+      mode: Phaser.Scale.NONE,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
     physics: {
       default: 'arcade',
+    },
+    render: {
+      pixelArt: true,
+      antialias: false,
+      roundPixels: true,
     },
     scene: [
       new MainScene({
