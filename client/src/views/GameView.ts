@@ -127,10 +127,9 @@ export class GameView {
       }
     });
 
-    // Changement de map
+    // Changement de map (la scène Phaser se recharge elle-même, voir MainScene.changeMap)
     this.socketManager.on('map:change', (data) => {
       this.uiManager?.showNotification(`Téléportation vers ${data.mapCode}`);
-      // TODO: Recharger la scène Phaser avec la nouvelle map
     });
 
     // Erreur de map

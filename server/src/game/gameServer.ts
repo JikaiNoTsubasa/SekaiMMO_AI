@@ -14,6 +14,7 @@ import { inventoryService } from '../services/inventoryService';
 import { skillService } from '../services/skillService';
 import { guildService } from '../services/guildService';
 import { bankService } from '../services/bankService';
+import { mapFileService } from '../services/mapFileService';
 import { MonsterSpawnManager } from './MonsterSpawnManager';
 import { MonsterAI } from './MonsterAI';
 import { LootManager } from './LootManager';
@@ -33,6 +34,7 @@ interface ConnectedPlayer {
   weaponCode: string | null;
   autoAttack: AutoAttackProfile;
   lastAutoAttackAt: number;
+  isChangingMap: boolean;
 }
 
 // Marge de tolérance (latence / désync de position) pour les auto-attaques
@@ -250,36 +252,9 @@ export class GameServer {
     // Enregistrer les handlers
     this.registerHandlers(socket);
 
-    // Envoyer les monstres de la map
-    const monsters = this.spawnManager.getMonstersOnMap(mapId);
-    console.log(`[GameServer] Sending ${monsters.length} monsters to player ${characterId}`);
-    socket.emit('monsters:initial', monsters.map((m) => ({
-      spawnId: m.spawnId,
-      monsterId: m.monsterId,
-      name: m.name,
-      level: m.level,
-      health: m.health,
-      maxHealth: m.maxHealth,
-      positionX: m.positionX,
-      positionY: m.positionY,
-      element: m.element,
-    })));
-
-    // Envoyer les autres joueurs
-    const otherPlayers = Array.from(this.connectedPlayers.values())
-      .filter((p) => p.mapId === mapId && p.characterId !== characterId);
-
-    console.log(`[GameServer] Sending ${otherPlayers.length} other players to player ${characterId}`);
-
-    for (const player of otherPlayers) {
-      const playerChar = await prisma.character.findUnique({
-        where: { id: player.characterId },
-        select: { id: true, name: true, health: true, maxHealth: true, positionX: true, positionY: true },
-      });
-      if (playerChar) {
-        socket.emit('player:joined', { character: playerChar });
-      }
-    }
+    // Monstres et joueurs de la map : le client les redemande (map:requestState) une fois sa scène prête,
+    // mais sa demande peut arriver avant l'enregistrement des handlers ci-dessus : on les envoie aussi ici
+    await this.sendMapState(socket, characterId);
 
     console.log(`[GameServer] Player ${characterId} connection setup complete`);
   }
@@ -333,6 +308,7 @@ export class GameServer {
       weaponCode: autoAttack.weaponCode,
       autoAttack,
       lastAutoAttackAt: oldPlayer?.lastAutoAttackAt ?? 0,
+      isChangingMap: oldPlayer?.isChangingMap ?? false,
     });
     socket.emit('combat:autoAttackProfile', autoAttack);
 
@@ -407,6 +383,15 @@ export class GameServer {
         await this.handleMapChange(socket, characterId, data.targetMapCode);
       } catch (error) {
         console.error('[map:changeRequest]', error);
+      }
+    });
+
+    // Le client a chargé sa map : lui envoyer l'état (map, position, monstres, joueurs)
+    socket.on('map:requestState', async () => {
+      try {
+        await this.sendMapState(socket, characterId);
+      } catch (error) {
+        console.error('[map:requestState]', error);
       }
     });
 
@@ -1159,58 +1144,88 @@ export class GameServer {
   }
 
   /**
-   * Gère le changement de map
+   * Gère le changement de map via un warp (événement WARP de la map .sm)
+   * Le serveur vérifie que le joueur se trouve bien sur un warp menant à la map demandée
    */
   private async handleMapChange(
     socket: Socket,
     characterId: number,
     targetMapCode: string
   ): Promise<void> {
-    const map = await prisma.gameMap.findUnique({
-      where: { code: targetMapCode },
-    });
+    const player = this.connectedPlayers.get(characterId);
+    if (!player || player.isChangingMap) return;
 
-    if (!map) {
-      socket.emit('map:changeFailed', { reason: 'Map not found' });
-      return;
+    player.isChangingMap = true;
+    try {
+      const [currentMap, targetMap] = await Promise.all([
+        prisma.gameMap.findUnique({ where: { id: player.mapId }, select: { code: true } }),
+        prisma.gameMap.findUnique({ where: { code: targetMapCode } }),
+      ]);
+
+      if (!currentMap || !targetMap) {
+        socket.emit('map:changeFailed', { reason: 'Map not found' });
+        return;
+      }
+
+      const warp = await mapFileService.findWarp(
+        currentMap.code,
+        targetMapCode,
+        player.positionX,
+        player.positionY
+      );
+      if (!warp) {
+        socket.emit('map:changeFailed', { reason: 'Not on a warp to this map' });
+        return;
+      }
+
+      // Position d'arrivée : tile cible du warp > spawn joueur de la map > centre
+      const arrival =
+        (await mapFileService.getArrivalPosition(targetMap.code, warp.targetTileX, warp.targetTileY)) ??
+        { x: targetMap.width / 2, y: targetMap.height / 2 };
+
+      await prisma.character.update({
+        where: { id: characterId },
+        data: {
+          currentMapId: targetMap.id,
+          positionX: arrival.x,
+          positionY: arrival.y,
+        },
+      });
+
+      // joinMap lit la position dans socket.data.character
+      socket.data.character = {
+        ...socket.data.character,
+        currentMapId: targetMap.id,
+        positionX: arrival.x,
+        positionY: arrival.y,
+      };
+
+      await this.joinMap(socket, targetMap.id);
+
+      // Le client recharge sa scène puis demande l'état de la map (map:requestState)
+      socket.emit('map:change', {
+        mapCode: targetMap.code,
+        mapId: targetMap.id,
+        positionX: arrival.x,
+        positionY: arrival.y,
+      });
+    } finally {
+      const current = this.connectedPlayers.get(characterId);
+      if (current) current.isChangingMap = false;
     }
+  }
 
-    // Trouver le portail de destination
-    const defaultX = map.width / 2;
-    const defaultY = map.height / 2;
+  /**
+   * Envoie au client l'état de sa map actuelle : infos, position, monstres et autres joueurs
+   */
+  private async sendMapState(socket: Socket, characterId: number): Promise<void> {
+    const player = this.connectedPlayers.get(characterId);
+    if (!player) return;
 
-    // Mettre à jour la position du personnage
-    await prisma.character.update({
-      where: { id: characterId },
-      data: {
-        currentMapId: map.id,
-        positionX: defaultX,
-        positionY: defaultY,
-      },
-    });
+    const map = await prisma.gameMap.findUnique({ where: { id: player.mapId } });
+    if (!map) return;
 
-    // Mettre à jour le character dans socket.data
-    socket.data.character = {
-      ...socket.data.character,
-      currentMapId: map.id,
-      positionX: defaultX,
-      positionY: defaultY,
-    };
-
-    // Rejoindre la nouvelle map
-    await this.joinMap(socket, map.id);
-
-    // Notifier le client
-    socket.emit('map:change', {
-      mapCode: map.code,
-      mapId: map.id,
-      positionX: defaultX,
-      positionY: defaultY,
-    });
-
-    // Envoyer les monstres de la nouvelle map
-    const monsters = this.spawnManager.getMonstersOnMap(map.id);
-    socket.emit('monsters:initial', monsters.map((m) => ({
+    const monsters = this.spawnManager.getMonstersOnMap(player.mapId).map((m) => ({
       spawnId: m.spawnId,
       monsterId: m.monsterId,
       name: m.name,
@@ -1220,7 +1235,39 @@ export class GameServer {
       positionX: m.positionX,
       positionY: m.positionY,
       element: m.element,
-    })));
+    }));
+
+    const otherIds = Array.from(this.connectedPlayers.values())
+      .filter((p) => p.mapId === player.mapId && p.characterId !== characterId)
+      .map((p) => p.characterId);
+
+    const others = await prisma.character.findMany({
+      where: { id: { in: otherIds } },
+      select: { id: true, name: true, health: true, maxHealth: true },
+    });
+
+    const players = others.map((c) => {
+      const connected = this.connectedPlayers.get(c.id);
+      return {
+        ...c,
+        positionX: connected?.positionX ?? 0,
+        positionY: connected?.positionY ?? 0,
+      };
+    });
+
+    socket.emit('map:state', {
+      map: {
+        id: map.id,
+        code: map.code,
+        name: map.name,
+        width: map.width,
+        height: map.height,
+        pvpEnabled: map.pvpEnabled,
+      },
+      position: { x: player.positionX, y: player.positionY },
+      monsters,
+      players,
+    });
   }
 
   /**

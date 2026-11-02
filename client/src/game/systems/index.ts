@@ -11,13 +11,6 @@ export { SkillTelegraph, TelegraphManager } from './SkillTelegraph';
 // Combat Manager - Effets visuels de combat
 export { CombatManager } from './CombatManager';
 
-// Tiled Map Loader - Chargement des maps
-export { TiledMapLoader } from './TiledMapLoader';
-export type {
-  TiledMapData,
-  TiledLayer,
-  TiledObject,
-  TiledTileset,
-  TiledProperty,
-  MapLoaderConfig,
-} from './TiledMapLoader';
+// Sekai Map Loader - Chargement des maps .sm (SekaiMapEditor)
+export { SekaiMapLoader } from './SekaiMapLoader';
+export type { SekaiMapLoaderConfig } from './SekaiMapLoader';

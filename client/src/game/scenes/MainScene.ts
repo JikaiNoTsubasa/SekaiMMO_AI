@@ -19,16 +19,31 @@ import type {
 import { InputManager, type InputEvent } from '../systems/InputManager';
 import { TelegraphManager } from '../systems/SkillTelegraph';
 import { CombatManager } from '../systems/CombatManager';
-import { TiledMapLoader } from '../systems/TiledMapLoader';
+import { SekaiMapLoader } from '../systems/SekaiMapLoader';
 
 // Options de la scène (simplifiées pour le démarrage)
 export interface MainSceneOptions {
   socket: Socket;
   characterId: number;
   initialPosition: { x: number; y: number };
+  mapCode?: string; // Fichier public/maps/<mapCode>.sm
   onMapChange?: (mapCode: string) => void;
   onReward?: (payload: { experience: number; gold: number; drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
+}
+
+// Données passées à scene.restart() lors d'un changement de map
+interface MainSceneInitData {
+  mapCode?: string;
+  position?: { x: number; y: number };
+}
+
+// État de la map envoyé par le serveur (réponse à map:requestState)
+interface MapStateEvent {
+  map: { id: number; code: string; name: string; width: number; height: number; pvpEnabled: boolean };
+  position: { x: number; y: number };
+  monsters: MonsterData[];
+  players: Partial<CharacterData>[];
 }
 
 // État d'un autre joueur
@@ -57,11 +72,8 @@ export class MainScene extends Phaser.Scene {
   private inputManager!: InputManager;
   private telegraphManager!: TelegraphManager;
   private combatManager!: CombatManager;
-  private mapLoader!: TiledMapLoader;
+  private mapLoader!: SekaiMapLoader;
 
-  // Tilemap et collisions
-  private tilemap: Phaser.Tilemaps.Tilemap | null = null;
-  private collisionLayer: Phaser.Tilemaps.TilemapLayer | null = null;
 
   // Joueur local
   private player!: Phaser.GameObjects.Rectangle;
@@ -84,6 +96,13 @@ export class MainScene extends Phaser.Scene {
 
   // Cooldowns des skills
   private skillCooldowns: Map<SkillSlot, number> = new Map();
+
+  // Listeners socket de la scène (retirés un par un au shutdown, sans toucher ceux de l'UI)
+  private socketHandlers: { event: string; handler: (...args: any[]) => void }[] = [];
+
+  // Warps : armés seulement une fois que le joueur n'est plus sur un warp (évite les allers-retours)
+  private warpArmed: boolean = false;
+  private pendingMapChange: boolean = false;
 
   // Auto-attaque (indépendante des compétences, style MOBA)
   private autoAttackTarget: number | null = null;
@@ -130,7 +149,7 @@ export class MainScene extends Phaser.Scene {
     // Map par défaut
     this.mapData = {
       id: 1,
-      code: 'starting_village',
+      code: options.mapCode ?? 'starting_village',
       name: 'Village de Départ',
       width: 480,  // 30 tiles * 16px
       height: 320, // 20 tiles * 16px
@@ -139,25 +158,41 @@ export class MainScene extends Phaser.Scene {
     };
   }
 
+  /**
+   * Appelé avant preload() à chaque démarrage, y compris scene.restart() lors d'un warp
+   */
+  init(data?: MainSceneInitData): void {
+    if (data?.mapCode) {
+      this.mapData = { ...this.mapData, code: data.mapCode, portals: [] };
+    }
+    if (data?.position) {
+      this.characterData.positionX = data.position.x;
+      this.characterData.positionY = data.position.y;
+    }
+
+    this.moveTarget = null;
+    this.autoAttackTarget = null;
+    this.autoAttackCooldown = 0;
+    this.warpArmed = false;
+    this.pendingMapChange = false;
+  }
+
   preload(): void {
-    console.log('[MainScene] preload() called');
+    // Le LoaderPlugin survit aux restart : ne pas empiler le listener
+    this.load.off('loaderror', this.onLoadError, this);
+    this.load.on('loaderror', this.onLoadError, this);
 
-    // Ajouter des listeners pour le chargement
-    this.load.on('filecomplete', (key: string, type: string) => {
-      console.log(`[MainScene] Loaded: ${type} - ${key}`);
+    // Map .sm (SekaiMapEditor) + images de ses tilesets
+    this.mapLoader = new SekaiMapLoader(this, {
+      mapBasePath: 'maps/',
+      tilesetBasePath: 'assets/tilesets/',
+      defaultTileSize: 16,
     });
+    this.mapLoader.preloadMap(this.mapData.code);
+  }
 
-    this.load.on('loaderror', (file: Phaser.Loader.File) => {
-      console.error(`[MainScene] Failed to load: ${file.key} from ${file.url}`);
-    });
-
-    // Charger la map Tiled JSON
-    console.log('[MainScene] Loading tilemap: maps/starting_village.tmj');
-    this.load.tilemapTiledJSON('starting_village', 'maps/starting_village.tmj');
-
-    // Charger l'image du tileset
-    console.log('[MainScene] Loading tileset: assets/tilesets/SunnysideWorld.png');
-    this.load.image('CityBase16', 'assets/tilesets/SunnysideWorld.png');
+  private onLoadError(file: Phaser.Loader.File): void {
+    console.error(`[MainScene] Failed to load: ${file.key} from ${file.url}`);
   }
 
   create(): void {
@@ -183,7 +218,10 @@ export class MainScene extends Phaser.Scene {
     this.setupCamera();
 
     // Événement de nettoyage
-    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
+
+    // Map prête : demander au serveur l'état de la map (monstres, joueurs, position)
+    this.options.socket.emit('map:requestState');
 
     console.log('[MainScene] create() complete');
   }
@@ -204,84 +242,25 @@ export class MainScene extends Phaser.Scene {
 
     // Combat Manager pour les effets visuels
     this.combatManager = new CombatManager(this);
-
-    // Map Loader pour les cartes Tiled
-    this.mapLoader = new TiledMapLoader(this, {
-      basePath: 'assets/maps/',
-      defaultTileSize: 16,
-    });
   }
 
   /**
    * Charge la map actuelle
    */
   private loadMap(): void {
-    console.log('[MainScene] loadMap() called');
-    console.log('[MainScene] Attempting to load tilemap with key: starting_village');
-
-    // Créer la tilemap depuis le fichier JSON
-    const map = this.make.tilemap({ key: 'starting_village' });
-
-    if (!map) {
-      console.error('[MainScene] Failed to create tilemap - map is null/undefined');
+    if (!this.mapLoader.createMap(this.mapData.code)) {
       // Fallback sur la map procédurale
       this.mapLoader.createProceduralMap(this.mapData);
       return;
     }
 
-    this.tilemap = map;
-
-    console.log('[MainScene] Tilemap created successfully');
-    console.log('[MainScene] Map dimensions:', map.width, 'x', map.height, 'tiles');
-    console.log('[MainScene] Tile size:', map.tileWidth, 'x', map.tileHeight, 'px');
-    console.log('[MainScene] Available tilesets:', map.tilesets.map(t => t.name));
-    console.log('[MainScene] Available layers:', map.layers.map(l => l.name));
-
-    // Ajouter le tileset - le nom doit correspondre au nom dans le fichier .tsx
-    const tileset = map.addTilesetImage('CityBase16', 'CityBase16');
-
-    if (!tileset) {
-      console.error('[MainScene] Failed to add tileset "CityBase16"');
-      console.log('[MainScene] Check that the tileset name matches the one in the .tmj file');
-      this.mapLoader.createProceduralMap(this.mapData);
-      return;
-    }
-
-    console.log('[MainScene] Tileset added successfully:', tileset.name);
-
-    // Créer les layers
-    const floorLayer = map.createLayer('Floor', tileset);
-    const objectsLayer = map.createLayer('ObjectsLayer', tileset);
-
-    if (floorLayer) {
-      floorLayer.setDepth(0);
-      console.log('[MainScene] Floor layer created');
-    } else {
-      console.warn('[MainScene] Floor layer not found or failed to create');
-    }
-
-    if (objectsLayer) {
-      objectsLayer.setDepth(10); // Au-dessus du joueur pour les bâtiments
-      console.log('[MainScene] ObjectsLayer created');
-
-      // Configurer les collisions sur le layer ObjectsLayer
-      // Toutes les tuiles non-vides (index > 0) sont des collisions
-      objectsLayer.setCollisionByExclusion([-1, 0]);
-      this.collisionLayer = objectsLayer;
-
-      // Debug: afficher les tuiles de collision (décommenter pour visualiser)
-      // this.showCollisionDebug(objectsLayer);
-
-      console.log('[MainScene] Collisions enabled on ObjectsLayer');
-    } else {
-      console.warn('[MainScene] ObjectsLayer not found or failed to create');
-    }
-
     // Mettre à jour les dimensions de la map
-    this.mapData.width = map.widthInPixels;
-    this.mapData.height = map.heightInPixels;
+    this.mapData.width = this.mapLoader.getWidthInPixels() ?? this.mapData.width;
+    this.mapData.height = this.mapLoader.getHeightInPixels() ?? this.mapData.height;
+    this.mapData.portals = this.mapLoader.getPortals();
 
-    console.log(`[MainScene] Map loaded successfully: ${map.widthInPixels}x${map.heightInPixels}px`);
+    // Debug: afficher les collisions et événements (décommenter pour visualiser)
+    // this.mapLoader.showDebug();
   }
 
   /**
@@ -343,49 +322,51 @@ export class MainScene extends Phaser.Scene {
   /**
    * Configure les événements socket
    */
-  private setupSocketEvents(): void {
-    const socket = this.options.socket;
+  /**
+   * Enregistre un listener socket propre à la scène (retiré au shutdown)
+   */
+  private listen<T = any>(event: string, handler: (payload: T) => void): void {
+    this.options.socket.on(event, handler);
+    this.socketHandlers.push({ event, handler });
+  }
 
+  private setupSocketEvents(): void {
     console.log('[MainScene] Setting up socket events...');
 
-    // Données de la map (reçues lors de la connexion)
-    socket.on('map:data', (payload: { id: number; code: string; name: string; width: number; height: number; pvpEnabled: boolean }) => {
-      console.log('[MainScene] Received map:data from server:', payload);
-      this.mapData = {
-        id: payload.id,
-        code: payload.code,
-        name: payload.name,
-        width: payload.width,
-        height: payload.height,
-        pvpEnabled: payload.pvpEnabled,
-        portals: [],
-      };
-      // Mettre à jour les bounds de la caméra
-      this.cameras.main.setBounds(0, 0, payload.width, payload.height);
+    // État de la map (réponse à map:requestState)
+    this.listen<MapStateEvent>('map:state', (payload) => {
+      this.handleMapState(payload);
+    });
+
+    // Changement de map refusé par le serveur
+    this.listen<{ reason: string }>('map:changeFailed', (payload) => {
+      console.warn('[MainScene] Map change failed:', payload.reason);
+      this.pendingMapChange = false;
+      this.warpArmed = false; // Réarmé quand le joueur quitte le warp
     });
 
     // Mouvement des joueurs
-    socket.on('player:moved', (payload: PlayerMovedEvent) => {
+    this.listen<PlayerMovedEvent>('player:moved', (payload) => {
       this.handlePlayerMoved(payload);
     });
 
     // Cast de skill
-    socket.on('player:skillCast', (payload: SkillCastEvent) => {
+    this.listen<SkillCastEvent>('player:skillCast', (payload) => {
       this.handleRemoteSkillCast(payload);
     });
 
     // Dégâts
-    socket.on('combat:damage', (payload: DamageEvent) => {
+    this.listen<DamageEvent>('combat:damage', (payload) => {
       this.handleDamage(payload);
     });
 
     // Profil d'auto-attaque (change avec l'arme équipée et les maîtrises)
-    socket.on('combat:autoAttackProfile', (profile: AutoAttackProfile) => {
+    this.listen<AutoAttackProfile>('combat:autoAttackProfile', (profile) => {
       this.autoAttackProfile = profile;
     });
 
     // Auto-attaques des autres joueurs (effet visuel)
-    socket.on('player:autoAttack', (payload: { characterId: number; targetId: number; weaponCode: string | null }) => {
+    this.listen<{ characterId: number; targetId: number; weaponCode: string | null }>('player:autoAttack', (payload) => {
       if (payload.characterId === this.characterData.id) return;
       const attacker = this.otherPlayers.get(payload.characterId);
       const monster = this.monsters.get(payload.targetId);
@@ -395,17 +376,17 @@ export class MainScene extends Phaser.Scene {
     });
 
     // Monstre vaincu
-    socket.on('monster:defeated', (payload: MonsterDefeatedEvent) => {
+    this.listen<MonsterDefeatedEvent>('monster:defeated', (payload) => {
       this.handleMonsterDefeated(payload);
     });
 
     // Spawn de monstre
-    socket.on('monster:spawn', (payload: MonsterData) => {
+    this.listen<MonsterData>('monster:spawn', (payload) => {
       this.spawnMonster(payload);
     });
 
     // Liste initiale des monstres (quand on rejoint une map)
-    socket.on('monsters:initial', (monsters: MonsterData[]) => {
+    this.listen<MonsterData[]>('monsters:initial', (monsters) => {
       console.log(`[MainScene] Received ${monsters.length} initial monsters`);
       for (const monster of monsters) {
         this.spawnMonster(monster);
@@ -413,42 +394,43 @@ export class MainScene extends Phaser.Scene {
     });
 
     // Mise à jour de santé du monstre
-    socket.on('monster:healthUpdate', (payload: { spawnId: number; health: number }) => {
+    this.listen<{ spawnId: number; health: number }>('monster:healthUpdate', (payload) => {
       this.updateMonsterHealth(payload);
     });
 
     // Mouvement du monstre
-    socket.on('monster:moved', (payload: { spawnId: number; positionX: number; positionY: number }) => {
+    this.listen<{ spawnId: number; positionX: number; positionY: number }>('monster:moved', (payload) => {
       this.handleMonsterMoved(payload);
     });
 
     // Attaque du monstre sur le joueur
-    socket.on('monster:attack', (payload: { spawnId: number; targetId: number; damage: number; damageType: string; element: string }) => {
+    this.listen<{ spawnId: number; targetId: number; damage: number; damageType: string; element: string }>('monster:attack', (payload) => {
       this.handleMonsterAttack(payload);
     });
 
     // Changement de map
-    socket.on('map:change', (payload: { mapCode: string; positionX: number; positionY: number }) => {
+    this.listen<{ mapCode: string; positionX: number; positionY: number }>('map:change', (payload) => {
       this.options.onMapChange?.(payload.mapCode);
+      this.changeMap(payload.mapCode, { x: payload.positionX, y: payload.positionY });
     });
 
     // Récompenses
-    socket.on('player:reward', (payload) => {
+    this.listen('player:reward', (payload) => {
       this.options.onReward?.(payload);
     });
 
     // Joueur rejoint la map
-    socket.on('player:joined', (payload: { character: Partial<CharacterData> }) => {
+    this.listen<{ character: Partial<CharacterData> }>('player:joined', (payload) => {
       this.addOtherPlayer(payload.character);
     });
 
     // Joueur quitte la map
-    socket.on('player:left', (payload: { characterId: number }) => {
+    this.listen<{ characterId: number }>('player:left', (payload) => {
       this.removeOtherPlayer(payload.characterId);
     });
 
     // Mise à jour de la barre de skills
-    socket.on('skills:bar', (data: Record<string, { skillId: number; skill: SkillData } | null>) => {
+    this.listen<Record<string, { skillId: number; skill: SkillData } | null>>('skills:bar', (data) => {
       const slots: SkillSlot[] = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F'];
       for (const slot of slots) {
         const slotData = data[slot];
@@ -480,6 +462,9 @@ export class MainScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     // Mettre à jour l'input manager
     this.inputManager.update();
+
+    // Animations des tiles de la map
+    this.mapLoader.update(delta);
 
     // Mettre à jour le telegraph
     if (this.telegraphManager.isActive()) {
@@ -643,11 +628,55 @@ export class MainScene extends Phaser.Scene {
    */
   private checkPortals(): void {
     const portal = this.mapLoader.checkPortalCollision(this.player.x, this.player.y);
-    if (portal) {
-      // Émettre l'événement de changement de map
-      this.options.socket.emit('map:changeRequest', {
-        targetMapCode: portal.targetMapCode,
-      });
+
+    if (!portal) {
+      this.warpArmed = true;
+      return;
+    }
+
+    if (!this.warpArmed || this.pendingMapChange) return;
+
+    // Envoyer la position exacte avant la demande pour que le serveur valide le warp
+    this.broadcastPosition();
+    this.pendingMapChange = true;
+    this.options.socket.emit('map:changeRequest', {
+      targetMapCode: portal.targetMapCode,
+    });
+  }
+
+  /**
+   * Recharge la scène sur une autre map (fichier maps/<mapCode>.sm)
+   */
+  private changeMap(mapCode: string, position: { x: number; y: number }): void {
+    console.log(`[MainScene] Changing map to ${mapCode} at (${position.x}, ${position.y})`);
+    this.scene.restart({ mapCode, position } satisfies MainSceneInitData);
+  }
+
+  /**
+   * Applique l'état de la map reçu du serveur
+   */
+  private handleMapState(state: MapStateEvent): void {
+    // Le personnage est sur une autre map côté serveur (ex: reconnexion) : charger la bonne
+    if (state.map.code !== this.mapData.code) {
+      this.changeMap(state.map.code, state.position);
+      return;
+    }
+
+    this.mapData.id = state.map.id;
+    this.mapData.name = state.map.name;
+    this.mapData.pvpEnabled = state.map.pvpEnabled;
+
+    // Position faisant autorité
+    this.player.setPosition(state.position.x, state.position.y);
+    this.characterData.positionX = state.position.x;
+    this.characterData.positionY = state.position.y;
+    this.updatePlayerBars();
+
+    for (const monster of state.monsters) {
+      this.spawnMonster(monster);
+    }
+    for (const player of state.players) {
+      this.addOtherPlayer(player);
     }
   }
 
@@ -924,7 +953,7 @@ export class MainScene extends Phaser.Scene {
   // === Gestion des entités ===
 
   private addOtherPlayer(data: Partial<CharacterData>): void {
-    if (!data.id || data.id === this.characterData.id) return;
+    if (!data.id || data.id === this.characterData.id || this.otherPlayers.has(data.id)) return;
 
     const sprite = this.add.rectangle(data.positionX ?? 0, data.positionY ?? 0, 16, 32, 0xff6b6b);
     sprite.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas
@@ -1140,22 +1169,6 @@ export class MainScene extends Phaser.Scene {
   }
 
   /**
-   * Affiche les tuiles de collision en surbrillance (debug)
-   */
-  private showCollisionDebug(layer: Phaser.Tilemaps.TilemapLayer): void {
-    const debugGraphics = this.add.graphics();
-    debugGraphics.setDepth(100);
-
-    layer.renderDebug(debugGraphics, {
-      tileColor: null, // Ne pas colorier les tuiles normales
-      collidingTileColor: new Phaser.Display.Color(255, 0, 0, 100), // Rouge transparent pour les collisions
-      faceColor: new Phaser.Display.Color(0, 255, 0, 100), // Vert pour les faces de collision
-    });
-
-    console.log('[MainScene] Collision debug visualization enabled');
-  }
-
-  /**
    * Vérifie la collision à une position donnée
    */
   private checkCollision(x: number, y: number): boolean {
@@ -1164,15 +1177,8 @@ export class MainScene extends Phaser.Scene {
       return true;
     }
 
-    // Vérifier le layer de collision
-    if (this.collisionLayer) {
-      const tile = this.collisionLayer.getTileAtWorldXY(x, y);
-      if (tile && tile.index > 0) {
-        return true; // Collision détectée
-      }
-    }
-
-    return false;
+    // Vérifier le layer collider de la map
+    return this.mapLoader.checkCollision(x, y);
   }
 
   /**
@@ -1181,20 +1187,11 @@ export class MainScene extends Phaser.Scene {
   private cleanup(): void {
     const socket = this.options.socket;
 
-    socket.off('player:moved');
-    socket.off('player:skillCast');
-    socket.off('combat:damage');
-    socket.off('combat:autoAttackProfile');
-    socket.off('player:autoAttack');
-    socket.off('monster:defeated');
-    socket.off('monster:spawn');
-    socket.off('monsters:initial');
-    socket.off('monster:healthUpdate');
-    socket.off('map:change');
-    socket.off('player:reward');
-    socket.off('player:joined');
-    socket.off('player:left');
-    socket.off('skills:bar');
+    // Ne retirer que les listeners de la scène (ceux de SocketManager/UI restent actifs)
+    for (const { event, handler } of this.socketHandlers) {
+      socket.off(event, handler);
+    }
+    this.socketHandlers = [];
 
     this.otherPlayers.forEach((p) => {
       p.sprite.destroy();
