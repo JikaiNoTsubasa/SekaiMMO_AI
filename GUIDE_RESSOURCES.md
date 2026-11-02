@@ -1,6 +1,10 @@
 # Guide des Ressources - SekaiMMO
 
-Ce document décrit les ressources graphiques et audio nécessaires au jeu et comment les intégrer.
+Ce document décrit les ressources graphiques et audio du jeu et comment les intégrer.
+
+Chaque section indique son état :
+- ✅ **Utilisé par le code** : le format décrit est exactement celui attendu par le client.
+- ⏳ **Prévu** : le code ne charge pas encore ces fichiers (placeholders géométriques à la place). Le format est indicatif.
 
 ---
 
@@ -10,112 +14,124 @@ Ce document décrit les ressources graphiques et audio nécessaires au jeu et co
 client/
 ├── public/
 │   ├── assets/
-│   │   ├── sprites/          # Sprites des personnages et monstres
-│   │   │   ├── characters/   # Sprites de personnages jouables
-│   │   │   ├── monsters/     # Sprites des monstres
-│   │   │   └── npcs/         # Sprites des PNJs
-│   │   ├── tilesets/         # Tilesets pour les maps
-│   │   ├── items/            # Icônes des items
-│   │   ├── skills/           # Icônes et effets des skills
-│   │   ├── ui/               # Éléments d'interface
-│   │   └── audio/            # Sons et musiques
-│   │       ├── sfx/          # Effets sonores
-│   │       └── music/        # Musiques d'ambiance
-│   └── maps/                 # Fichiers Tiled (.tmj)
+│   │   ├── sprites/
+│   │   │   ├── characters/   # ✅ Spritesheet des personnages (base_character.png)
+│   │   │   ├── monsters/     # ⏳ Sprites des monstres
+│   │   │   └── npcs/         # ⏳ Sprites des PNJs
+│   │   ├── tilesets/         # ✅ Images des tilesets des maps
+│   │   ├── items/            # ⏳ Icônes des items
+│   │   ├── skills/           # ⏳ Icônes et effets des skills
+│   │   ├── ui/               # ⏳ Éléments d'interface
+│   │   └── audio/            # ⏳ Sons et musiques
+│   └── maps/                 # ✅ Maps .sm (SekaiMapEditor)
+docs/
+└── sprites/
+    └── base_character_template.png   # Gabarit pour dessiner le spritesheet personnage
 ```
 
 ---
 
-## 1. Sprites des Personnages
+## 1. Sprites des Personnages ✅
 
-### Format Requis
-- **Type**: Spritesheet PNG avec canal alpha
-- **Taille de frame**: 64x64 pixels (recommandé)
-- **Animations requises**:
-  - `idle` (4 frames) - repos
-  - `walk` (8 frames) - marche dans 4 directions (bas, gauche, droite, haut)
-  - `attack` (6 frames) - attaque par type d'arme
+Utilisé pour le joueur local et les autres joueurs.
+Source de vérité dans le code : `client/src/game/systems/characterSprite.ts` (format) et `CharacterAnimator.ts` (lecture des animations).
 
-### Structure du Spritesheet
+### Fichier
+
+| | |
+|---|---|
+| **Chemin** | `client/public/assets/sprites/characters/base_character.png` |
+| **Type** | Spritesheet PNG avec transparence (pas de JSON) |
+| **Taille d'une frame** | **32x32 pixels** |
+| **Colonnes** | **8** (frames inutilisées en fin de ligne : laisser transparent) |
+| **Lignes** | **16** (4 animations x 4 directions) |
+| **Taille totale** | **256 x 512 pixels** |
+
+Un gabarit agrandi x4 (grille, numéros de frames, ligne des pieds) est disponible dans
+`docs/sprites/base_character_template.png`.
+
+### Point d'ancrage (important)
+
+La position du personnage dans le monde correspond à **ses pieds** :
+- **Horizontal** : centre de la frame (x = 16).
+- **Vertical** : ligne **y = 29**, soit 3 pixels au-dessus du bas de la frame.
+
+Dessiner le personnage debout sur la ligne y = 29, centré horizontalement, et identique d'une frame à l'autre (sinon le personnage "glisse" pendant l'animation). Les 3 lignes du bas peuvent servir à une ombre.
+Le personnage peut occuper toute la hauteur (29 px au-dessus des pieds). Les barres de vie et de mana s'affichent au-dessus de la frame.
+
+### Animations attendues
+
+Les directions sont toujours dans l'ordre **bas, gauche, droite, haut** (une ligne chacune).
+Les frames sont lues de gauche à droite à partir de la colonne 0.
+
+| Lignes | Animation | Frames | Vitesse | Boucle | Quand elle est jouée |
+|--------|-----------|--------|---------|--------|----------------------|
+| 0-3 | `idle` | 4 | 6 fps | oui | Personnage immobile |
+| 4-7 | `walk` | 6 | 10 fps | oui | Déplacement (clic droit, approche d'une cible) |
+| 8-11 | `attack` | 4 | 12 fps | non | Chaque auto-attaque, tournée vers la cible |
+| 12-15 | `cast` | 4 | 10 fps | non | Lancement d'une compétence, tourné vers la zone visée |
+
+Détail ligne par ligne :
+
 ```
-┌────┬────┬────┬────┐
-│idle│idle│idle│idle│  Ligne 0: Idle (4 frames)
-├────┼────┼────┼────┤
-│walk│walk│walk│walk│  Lignes 1-4: Walk down/left/right/up (8 frames chacune)
-│walk│walk│walk│walk│
-├────┼────┼────┼────┤
-│atk │atk │atk │atk │  Lignes 5+: Attack par arme (6 frames)
-│atk │atk │    │    │
-└────┴────┴────┴────┘
+Ligne  0 : idle   bas      frames 0-3
+Ligne  1 : idle   gauche   frames 8-11
+Ligne  2 : idle   droite   frames 16-19
+Ligne  3 : idle   haut     frames 24-27
+Ligne  4 : walk   bas      frames 32-37
+Ligne  5 : walk   gauche   frames 40-45
+Ligne  6 : walk   droite   frames 48-53
+Ligne  7 : walk   haut     frames 56-61
+Ligne  8 : attack bas      frames 64-67
+Ligne  9 : attack gauche   frames 72-75
+Ligne 10 : attack droite   frames 80-83
+Ligne 11 : attack haut     frames 88-91
+Ligne 12 : cast   bas      frames 96-99
+Ligne 13 : cast   gauche   frames 104-107
+Ligne 14 : cast   droite   frames 112-115
+Ligne 15 : cast   haut     frames 120-123
 ```
 
-### Fichiers à Créer
-```
-public/assets/sprites/characters/
-├── base_character.png       # Spritesheet du personnage de base
-├── base_character.json      # Définition des animations (Phaser)
-├── hair_style_1.png         # Cheveux variante 1
-├── hair_style_2.png         # ...etc
-└── weapons/
-    ├── sword.png            # Sprite de l'épée
-    ├── dual_daggers.png     # Sprite des dagues
-    ├── bow.png              # Sprite de l'arc
-    ├── two_handed_axe.png   # Sprite de la hache
-    ├── wand.png             # Sprite de la baguette
-    └── scepter.png          # Sprite du sceptre
-```
+### Comportement en jeu
 
-### Exemple de fichier JSON (Phaser Atlas)
-```json
-{
-  "textures": [{
-    "image": "base_character.png",
-    "format": "RGBA8888",
-    "size": { "w": 256, "h": 384 },
-    "scale": 1,
-    "frames": [
-      { "filename": "idle_0", "frame": { "x": 0, "y": 0, "w": 64, "h": 64 } },
-      { "filename": "idle_1", "frame": { "x": 64, "y": 0, "w": 64, "h": 64 } },
-      { "filename": "walk_down_0", "frame": { "x": 0, "y": 64, "w": 64, "h": 64 } }
-    ]
-  }]
-}
-```
+- **Direction** : la direction dominante du mouvement ou de la cible (horizontale si l'écart horizontal est le plus grand, sinon verticale).
+- **attack** : sa durée est raccourcie pour suivre la vitesse d'attaque (au plus 400 ms, moins si le personnage attaque plus vite). Les 4 frames sont toujours jouées : prévoir l'impact sur la frame 2 ou 3.
+- **attack / cast** puis retour automatique à `idle`. Un déplacement interrompt l'animation en cours.
+- **Arme** : il n'y a pas encore de sprite d'arme séparé. Le personnage dessiné est utilisé quelle que soit l'arme équipée.
+
+### Placeholder
+
+Si `base_character.png` est absent, un rectangle coloré 16x29 est affiché (bleu pour le joueur, rouge pour les autres joueurs) et un avertissement apparaît dans la console.
+Si le fichier est trop petit pour une animation, cette animation est ignorée (avertissement dans la console) : on peut donc livrer `idle` et `walk` d'abord, puis compléter.
+
+### Modifier le format
+
+Le nombre de frames, la vitesse ou l'ordre des lignes se changent dans `CHARACTER_ANIMATIONS` (`characterSprite.ts`). Mettre ce guide à jour en même temps.
 
 ---
 
-## 2. Sprites des Monstres
+## 2. Sprites des Monstres ⏳
 
-### Monstres Requis (selon seed.ts)
-| Nom | Description | Niveau | Taille suggérée |
-|-----|-------------|--------|-----------------|
-| `peaceful_jelly` | Gelée Paisible | 1 | 48x48 |
-| `prairie_wolf` | Loup des Prairies | 3 | 64x64 |
-| `forest_goblin` | Gobelin des Bois | 5 | 64x64 |
+Pas encore chargés : les monstres sont des rectangles rouges de 16x32 ancrés aux pieds (même convention que les personnages).
 
-### Animations Requises par Monstre
-- `idle` (4 frames)
-- `walk` (4 frames, 4 directions)
-- `attack` (4 frames)
-- `death` (4 frames)
-- `hurt` (2 frames)
+### Monstres (selon seed.ts)
+| Nom | Description | Niveau |
+|-----|-------------|--------|
+| `peaceful_jelly` | Gelée Paisible | 1 |
+| `prairie_wolf` | Loup des Prairies | 3 |
+| `forest_goblin` | Gobelin des Bois | 5 |
 
-### Fichiers à Créer
-```
-public/assets/sprites/monsters/
-├── peaceful_jelly.png
-├── peaceful_jelly.json
-├── prairie_wolf.png
-├── prairie_wolf.json
-├── forest_goblin.png
-└── forest_goblin.json
-```
+### Format suggéré
+- Même structure que les personnages (frames 32x32, 4 directions, ancrage aux pieds) pour réutiliser le même système d'animation.
+- Animations envisagées : `idle`, `walk`, `attack`, `hurt`, `death`.
 
 ---
 
-## 3. Sprites des PNJs
+## 3. Sprites des PNJs ⏳
 
-### PNJs Requis (selon seed.ts)
+Pas encore affichés sur la map.
+
+### PNJs (selon seed.ts)
 | Code | Nom | Rôle |
 |------|-----|------|
 | `aldric` | Aldric | Maître d'Épée |
@@ -136,45 +152,27 @@ public/assets/sprites/monsters/
 | `helena` | Helena | Apothicaire |
 | `rothgar` | Rothgar | Banquier |
 
-### Format
-- Taille: 64x64 pixels
-- Animations: `idle` uniquement (4 frames)
+### Format suggéré
+- Frames 32x32, ancrage aux pieds, animation `idle` (4 frames, direction bas).
 
 ---
 
-## 4. Tilesets pour Maps
+## 4. Tilesets ✅
 
-### Format Tiled
-- **Taille des tuiles**: 32x32 pixels
-- **Format**: PNG
-- **Compatibilité**: Tiled Map Editor
-
-### Tilesets Requis
-```
-public/assets/tilesets/
-├── terrain.png          # Herbe, terre, eau, routes
-├── buildings.png        # Maisons, boutiques, murs
-├── vegetation.png       # Arbres, buissons, fleurs
-├── dungeon.png          # Donjons, grottes
-└── decorations.png      # Objets décoratifs
-```
-
-### Configuration Tiled
-1. Créer un nouveau tileset dans Tiled
-2. Taille de tuile: 32x32
-3. Exporter en JSON (format Tiled JSON)
-4. Placer dans `public/maps/`
+- **Dossier** : `client/public/assets/tilesets/`
+- **Format** : PNG, tuiles carrées (16x16 pour le tileset actuel `SunnysideWorld.png`), sans marge ni espacement.
+- **Résolution** : le client ne garde que le **nom du fichier** de l'image référencée dans la map `.sm` et le cherche dans ce dossier. L'image doit donc porter le même nom que dans SekaiMapEditor (`SekaiMapEditor/public/assets/`).
+- Les tuiles animées sont définies dans l'éditeur et jouées par le client (durée par frame respectée).
 
 ---
 
-## 5. Icônes des Items
+## 5. Icônes des Items ⏳
 
 ### Format
-- Taille: 32x32 ou 64x64 pixels
-- Format: PNG avec transparence
-- Nommage: `item_{id}.png` ou `item_{nom}.png`
+- Taille : 32x32 pixels
+- Format : PNG avec transparence
 
-### Items Requis (selon seed.ts)
+### Items (selon seed.ts)
 ```
 public/assets/items/
 ├── weapons/
@@ -195,52 +193,50 @@ public/assets/items/
 
 ---
 
-## 6. Icônes des Skills
+## 6. Icônes des Skills ⏳
 
 ### Format
-- Taille: 48x48 ou 64x64 pixels
-- Format: PNG avec transparence
-- Style: Icônes stylisées (type MMO)
+- Taille : 48x48 ou 64x64 pixels
+- Format : PNG avec transparence
 
-### Skills Requis (18 skills selon seed.ts)
+### Skills (18 selon seed.ts)
+Les attaques automatiques ne sont pas des compétences. Chaque arme a un **passif de maîtrise** (icône à prévoir) et deux compétences actives.
+
 ```
 public/assets/skills/
 ├── sword/
-│   ├── basic_strike.png         # Frappe Basique
+│   ├── sword_mastery.png        # Maîtrise de l'Épée (passif)
 │   ├── shield_bash.png          # Coup de Bouclier
 │   └── fire_thrust.png          # Estoc Enflammé
 ├── dual_daggers/
-│   ├── double_slash.png         # Double Entaille
+│   ├── daggers_mastery.png      # Maîtrise des Dagues (passif)
 │   ├── poison_blades.png        # Lames Empoisonnées
 │   └── shadow_dance.png         # Danse des Ombres
 ├── bow/
-│   ├── simple_shot.png          # Tir Simple
+│   ├── bow_mastery.png          # Maîtrise de l'Arc (passif)
 │   ├── arrow_rain.png           # Pluie de Flèches
 │   └── ice_arrow.png            # Flèche de Glace
 ├── axe/
-│   ├── axe_strike.png           # Coup de Hache
+│   ├── axe_mastery.png          # Maîtrise de la Hache (passif)
 │   ├── whirlwind.png            # Tourbillon
 │   └── earthquake.png           # Séisme
 ├── wand/
-│   ├── arcane_orb.png           # Orbe Arcanique
+│   ├── wand_mastery.png         # Maîtrise de la Baguette (passif)
 │   ├── fireball.png             # Boule de Feu
 │   └── lightning.png            # Éclair
 └── scepter/
-    ├── mystic_ray.png           # Rayon Mystique
+    ├── scepter_mastery.png      # Maîtrise du Sceptre (passif)
     ├── light_wave.png           # Vague de Lumière
     └── ice_nova.png             # Nova de Glace
 ```
 
 ---
 
-## 7. Effets Visuels des Skills
+## 7. Effets Visuels des Skills ⏳
 
-### Format
-- Spritesheets animés
-- Taille variable selon l'effet
-- Canal alpha obligatoire
+Actuellement dessinés par code (`CombatManager.ts`) : cercles, lignes, cônes, projectiles et impacts colorés selon l'élément.
 
-### Effets Requis
+### Effets envisagés
 ```
 public/assets/skills/effects/
 ├── elements/
@@ -263,7 +259,9 @@ public/assets/skills/effects/
 
 ---
 
-## 8. Éléments UI
+## 8. Éléments UI ⏳
+
+L'interface est actuellement en HTML/CSS.
 
 ```
 public/assets/ui/
@@ -287,7 +285,7 @@ public/assets/ui/
 
 ---
 
-## 9. Audio
+## 9. Audio ⏳
 
 ### Effets Sonores (SFX)
 ```
@@ -322,40 +320,50 @@ public/assets/audio/music/
 
 ---
 
-## 10. Maps Tiled
+## 10. Maps (.sm - SekaiMapEditor) ✅
 
-### Structure des Fichiers
+Les maps sont créées avec **SekaiMapEditor** (projet `SekaiMapEditor/`) et exportées au format `.sm` (JSON). Tiled n'est plus utilisé.
+
+### Fichiers
 ```
-public/maps/
-├── starting_village.json    # Village de départ
-├── peaceful_prairie.json    # Prairie paisible
-├── dark_forest.json         # Forêt sombre
-├── pvp_arena.json           # Arène PvP
-└── tilesets/
-    └── *.tsx                # Fichiers tileset Tiled
+client/public/maps/
+├── starting_village.sm      # Village de départ
+├── peaceful_prairie.sm      # Prairie paisible
+├── dark_forest.sm           # Forêt sombre
+└── pvp_arena.sm             # Arène PvP
 ```
 
-### Layers Requis par Map
-1. `ground` - Sol de base
-2. `terrain` - Variations de terrain
-3. `decorations_below` - Décorations sous le joueur
-4. `collisions` - Zones de collision (invisible)
-5. `decorations_above` - Décorations au-dessus du joueur
-6. `objects` - Objets interactifs (portails, coffres)
+Le nom du fichier doit être **exactement le `code`** de la map dans la table `GameMap`. Le serveur lit aussi ces fichiers (pour valider les warps) : dossier configurable via `MAP_FILES_DIR`.
 
-### Propriétés Personnalisées
-- **Portails**: Objet avec propriété `targetMap` et `spawnX`, `spawnY`
-- **Spawn points**: Objet avec propriété `type: "spawn"` et `monsterId`
-- **NPCs**: Objet avec propriété `type: "npc"` et `npcId`
+### Layers (fixes)
+| Layer | Rôle en jeu |
+|-------|-------------|
+| `floor` | Sol, sous tout le reste |
+| `behind` | Décor sous le joueur |
+| `front` | Décor au-dessus du joueur (arbres, toits) |
+| `collider` | Cases bloquantes (non affiché) |
+| `event` | Événements (non affiché) |
+
+### Événements
+| Type | Paramètres JSON | Effet |
+|------|-----------------|-------|
+| `WARP` | `{ "targetMap": "code", "targetX": 1, "targetY": 2 }` | Changement de map. `targetX`/`targetY` (en tiles) optionnels : sinon premier `SPAWN` de la map cible, sinon centre |
+| `SPAWN` | `{ "spawnType": "player" }` (optionnel) | Point d'arrivée par défaut |
+| `DIALOG`, `TRIGGER`, `CUSTOM` | libres | Lus mais pas encore utilisés |
 
 ---
 
 ## Comment Intégrer les Ressources
 
-### 1. Ajouter un nouveau monstre
+### 1. Ajouter le spritesheet des personnages
 
-1. Créer le sprite dans `public/assets/sprites/monsters/`
-2. Ajouter dans `prisma/seed.ts`:
+1. Dessiner sur le gabarit `docs/sprites/base_character_template.png` (réduit à 256x512, une frame = 32x32).
+2. Exporter en PNG transparent : `client/public/assets/sprites/characters/base_character.png`.
+3. Recharger le jeu : les animations sont créées automatiquement (voir la console en cas de frames manquantes).
+
+### 2. Ajouter un nouveau monstre
+
+1. Ajouter dans `prisma/seed.ts` :
 ```typescript
 const newMonster = await prisma.monster.upsert({
   where: { name: 'Nom du Monstre' },
@@ -368,14 +376,12 @@ const newMonster = await prisma.monster.upsert({
   },
 });
 ```
-3. Créer un spawn dans seed.ts
-4. Re-exécuter `npx prisma db seed`
+2. Créer un spawn dans seed.ts
+3. Re-exécuter `npx prisma db seed`
 
-### 2. Ajouter un nouveau skill
+### 3. Ajouter un nouveau skill
 
-1. Créer l'icône dans `public/assets/skills/`
-2. Ajouter l'effet visuel si nécessaire
-3. Ajouter dans `prisma/seed.ts`:
+1. Ajouter dans `prisma/seed.ts` (dégâts = base + % attaque + % magie) :
 ```typescript
 await prisma.skill.upsert({
   where: { name: 'Nom du Skill' },
@@ -384,18 +390,20 @@ await prisma.skill.upsert({
     name: 'Nom du Skill',
     weaponTypeId: sword.id,
     baseDamage: 20,
+    attackScaling: 0.6, // +60% de l'attaque
+    magicScaling: 0,    // +0% de la magie
     cooldown: 5.0,
     // ... autres stats
   },
 });
 ```
-4. Re-exécuter `npx prisma db seed`
+2. Re-exécuter `npx prisma db seed`
 
-### 3. Ajouter une nouvelle map
+### 4. Ajouter une nouvelle map
 
-1. Créer la map avec Tiled Map Editor
-2. Exporter en JSON dans `public/maps/`
-3. Ajouter dans `prisma/seed.ts`:
+1. Créer la map dans SekaiMapEditor et l'exporter en `.sm`.
+2. La placer dans `client/public/maps/<code>.sm`.
+3. Ajouter dans `prisma/seed.ts` :
 ```typescript
 const newMap = await prisma.gameMap.upsert({
   where: { code: 'new_map' },
@@ -403,15 +411,14 @@ const newMap = await prisma.gameMap.upsert({
   create: {
     code: 'new_map',
     name: 'Nouvelle Map',
-    width: 2000,
+    width: 2000,  // en pixels, aligné sur la map .sm
     height: 1500,
     pvpEnabled: false,
-    portals: JSON.stringify([...]),
   },
 });
 ```
-4. Ajouter les spawns de monstres si nécessaire
-5. Re-exécuter `npx prisma db seed`
+4. Relier les maps avec des événements `WARP` dans l'éditeur.
+5. Ajouter les spawns de monstres si nécessaire, puis `npx prisma db seed`.
 
 ---
 
@@ -435,16 +442,11 @@ const newMap = await prisma.gameMap.upsert({
 
 ---
 
-## Ressources Placeholder Actuelles
+## Placeholders Actuels
 
-Le jeu utilise actuellement des formes géométriques générées par code:
-- **Joueur**: Rectangle bleu
-- **Monstres**: Rectangles rouges
-- **NPCs**: Rectangles verts
-- **Map**: Grille procédurale
-
-Ces placeholders sont définis dans:
-- `client/src/game/systems/TiledMapLoader.ts` (génération procédurale de map)
-- `client/src/game/scenes/MainScene.ts` (sprites basiques)
-
-Pour les remplacer, charger les assets dans la méthode `preload()` de MainScene et les utiliser dans `create()`.
+| Élément | Placeholder | Défini dans |
+|---------|-------------|-------------|
+| Joueur / autres joueurs | Rectangle bleu / rouge 16x29 dans une frame 32x32 (si `base_character.png` absent) | `client/src/game/systems/CharacterAnimator.ts` |
+| Monstres | Rectangle rouge 16x32 | `client/src/game/scenes/MainScene.ts` (`spawnMonster`) |
+| Map | Grille procédurale (si le fichier `.sm` est absent) | `client/src/game/systems/SekaiMapLoader.ts` |
+| Effets de combat | Formes colorées | `client/src/game/systems/CombatManager.ts` |

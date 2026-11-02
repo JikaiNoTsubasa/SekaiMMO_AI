@@ -19,6 +19,7 @@ import type {
 import { InputManager, type InputEvent } from '../systems/InputManager';
 import { TelegraphManager } from '../systems/SkillTelegraph';
 import { CombatManager } from '../systems/CombatManager';
+import { CharacterAnimator } from '../systems/CharacterAnimator';
 import { SekaiMapLoader } from '../systems/SekaiMapLoader';
 
 // Options de la scène (simplifiées pour le démarrage)
@@ -49,7 +50,9 @@ interface MapStateEvent {
 // État d'un autre joueur
 interface OtherPlayer {
   characterId: number;
-  sprite: Phaser.GameObjects.Rectangle;
+  sprite: Phaser.GameObjects.Sprite;
+  animator: CharacterAnimator;
+  stopTimer: Phaser.Time.TimerEvent | null; // Retour au repos quand les mises à jour de position cessent
   nameText: Phaser.GameObjects.Text;
   healthBar: Phaser.GameObjects.Graphics;
   data: Partial<CharacterData>;
@@ -76,7 +79,9 @@ export class MainScene extends Phaser.Scene {
 
 
   // Joueur local
-  private player!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.GameObjects.Sprite;
+  private playerAnimator!: CharacterAnimator;
+  private playerMoveAngle: number | null = null; // Direction du déplacement de cette frame
   private playerHealthBar!: Phaser.GameObjects.Graphics;
   private playerManaBar!: Phaser.GameObjects.Graphics;
 
@@ -189,6 +194,9 @@ export class MainScene extends Phaser.Scene {
       defaultTileSize: 16,
     });
     this.mapLoader.preloadMap(this.mapData.code);
+
+    // Spritesheet des personnages (32x32)
+    CharacterAnimator.preload(this);
   }
 
   private onLoadError(file: Phaser.Loader.File): void {
@@ -242,6 +250,9 @@ export class MainScene extends Phaser.Scene {
 
     // Combat Manager pour les effets visuels
     this.combatManager = new CombatManager(this);
+
+    // Animations des personnages (ou placeholder si le spritesheet est absent)
+    CharacterAnimator.setup(this);
   }
 
   /**
@@ -270,10 +281,10 @@ export class MainScene extends Phaser.Scene {
     const startX = Phaser.Math.Clamp(this.characterData.positionX, 0, this.mapData.width);
     const startY = Phaser.Math.Clamp(this.characterData.positionY, 0, this.mapData.height);
 
-    // Sprite du joueur (rectangle 16x32 pixel art)
-    this.player = this.add.rectangle(startX, startY, 16, 32, 0x4f9dff);
-    this.player.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas (29/32)
+    // Sprite du joueur (frame 32x32, ancré aux pieds)
+    this.player = CharacterAnimator.createSprite(this, startX, startY, 0x4f9dff);
     this.player.setDepth(10);
+    this.playerAnimator = new CharacterAnimator(this.player);
 
     // Barre de vie
     this.playerHealthBar = this.add.graphics();
@@ -372,6 +383,10 @@ export class MainScene extends Phaser.Scene {
       const monster = this.monsters.get(payload.targetId);
       if (!attacker || !monster) return;
       const isMagical = payload.weaponCode === 'WAND' || payload.weaponCode === 'SCEPTER';
+      attacker.animator.playAction(
+        'attack',
+        Phaser.Math.Angle.Between(attacker.sprite.x, attacker.sprite.y, monster.sprite.x, monster.sprite.y)
+      );
       this.playAutoAttackEffect(attacker.sprite.x, attacker.sprite.y, monster.sprite.x, monster.sprite.y, isMagical);
     });
 
@@ -452,7 +467,9 @@ export class MainScene extends Phaser.Scene {
     const camera = this.cameras.main;
     camera.setBackgroundColor('#141625');
     camera.setBounds(0, 0, this.mapData.width, this.mapData.height);
-    camera.startFollow(this.player, true, 0.1, 0.1);
+    // Pas de lissage (lerp = 1) : avec un lerp < 1, caméra et joueur sont arrondis séparément
+    // et le personnage tremble d'un pixel à l'écran pendant la marche
+    camera.startFollow(this.player, true, 1, 1);
     camera.roundPixels = true;
   }
 
@@ -473,11 +490,19 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Auto-attaque
+    this.playerMoveAngle = null;
     this.autoAttackCooldown = Math.max(0, this.autoAttackCooldown - delta / 1000);
     this.updateAutoAttack(time, delta);
 
     // Mouvement du joueur
     this.updatePlayerMovement(delta);
+
+    // Animation : marche si le joueur s'est déplacé, sinon repos
+    if (this.playerMoveAngle !== null) {
+      this.playerAnimator.walk(this.playerMoveAngle);
+    } else {
+      this.playerAnimator.idle();
+    }
 
     // Mise à jour des cooldowns
     this.updateCooldowns(delta);
@@ -536,12 +561,15 @@ export class MainScene extends Phaser.Scene {
       if (!this.checkCollision(nextX, nextY)) {
         this.player.x = Phaser.Math.Clamp(nextX, 0, this.mapData.width);
         this.player.y = Phaser.Math.Clamp(nextY, 0, this.mapData.height);
+        this.playerMoveAngle = moveAngle;
         this.updatePlayerBars();
       }
     } else if (this.autoAttackCooldown <= 0) {
       // À portée - auto-attaque (arme équipée ou mains nues), aucune compétence requise
       this.autoAttackCooldown = 1 / this.autoAttackProfile.attacksPerSecond;
       const isMagical = this.autoAttackProfile.damageType === 'MAGICAL';
+      const attackAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, monster.sprite.x, monster.sprite.y);
+      this.playerAnimator.playAction('attack', attackAngle, 1000 / this.autoAttackProfile.attacksPerSecond);
       this.playAutoAttackEffect(this.player.x, this.player.y, monster.sprite.x, monster.sprite.y, isMagical);
       this.options.socket.emit('combat:autoAttack', { targetId: monster.spawnId });
     }
@@ -604,6 +632,7 @@ export class MainScene extends Phaser.Scene {
     if (!this.checkCollision(nextX, nextY)) {
       this.player.x = Phaser.Math.Clamp(nextX, 0, this.mapData.width);
       this.player.y = Phaser.Math.Clamp(nextY, 0, this.mapData.height);
+      this.playerMoveAngle = angle;
     }
 
     // Mettre à jour les barres du joueur
@@ -758,6 +787,7 @@ export class MainScene extends Phaser.Scene {
 
     // Calculer la direction
     const direction = Phaser.Math.Angle.Between(this.player.x, this.player.y, targetX, targetY);
+    this.playerAnimator.playAction('cast', direction);
 
     // Jouer l'effet visuel
     this.combatManager.playSkillEffect({
@@ -813,6 +843,19 @@ export class MainScene extends Phaser.Scene {
 
     const other = this.otherPlayers.get(payload.characterId);
     if (other) {
+      // Animation de marche dans la direction du déplacement, repos si plus de mise à jour
+      const distance = Phaser.Math.Distance.Between(other.sprite.x, other.sprite.y, payload.position.x, payload.position.y);
+      if (distance > 0.5) {
+        other.animator.walk(
+          Phaser.Math.Angle.Between(other.sprite.x, other.sprite.y, payload.position.x, payload.position.y)
+        );
+        other.stopTimer?.remove();
+        other.stopTimer = this.time.delayedCall(200, () => {
+          other.stopTimer = null;
+          other.animator.idle();
+        });
+      }
+
       // Interpolation vers la nouvelle position
       this.tweens.add({
         targets: other.sprite,
@@ -841,6 +884,7 @@ export class MainScene extends Phaser.Scene {
       payload.targetX,
       payload.targetY
     );
+    other.animator.playAction('cast', direction);
 
     this.combatManager.playSkillEffect({
       x: skill.telegraphShape === 'circle' ? payload.targetX : other.sprite.x,
@@ -920,7 +964,7 @@ export class MainScene extends Phaser.Scene {
       duration: 100,
       onUpdate: () => {
         // Mettre à jour la position du texte et de la barre de vie
-        monster.nameText.setPosition(monster.sprite.x, monster.sprite.y - 35);
+        monster.nameText.setPosition(Math.floor(monster.sprite.x), Math.floor(monster.sprite.y) - 35);
         this.updateMonsterVisuals(monster);
       },
     });
@@ -955,8 +999,7 @@ export class MainScene extends Phaser.Scene {
   private addOtherPlayer(data: Partial<CharacterData>): void {
     if (!data.id || data.id === this.characterData.id || this.otherPlayers.has(data.id)) return;
 
-    const sprite = this.add.rectangle(data.positionX ?? 0, data.positionY ?? 0, 16, 32, 0xff6b6b);
-    sprite.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas
+    const sprite = CharacterAnimator.createSprite(this, data.positionX ?? 0, data.positionY ?? 0, 0xff6b6b);
     sprite.setDepth(8);
 
     const nameText = this.add.text(0, 0, data.name ?? 'Player', {
@@ -974,6 +1017,8 @@ export class MainScene extends Phaser.Scene {
     const other: OtherPlayer = {
       characterId: data.id,
       sprite,
+      animator: new CharacterAnimator(sprite),
+      stopTimer: null,
       nameText,
       healthBar,
       data,
@@ -996,7 +1041,7 @@ export class MainScene extends Phaser.Scene {
   private updateOtherPlayerVisuals(other: OtherPlayer): void {
     const { sprite, nameText, healthBar, data } = other;
 
-    nameText.setPosition(sprite.x, sprite.y - 35);
+    nameText.setPosition(Math.floor(sprite.x), Math.floor(sprite.y) - 35);
 
     healthBar.clear();
     const healthPercent = (data.health ?? 100) / (data.maxHealth ?? 100);
@@ -1004,10 +1049,10 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 4;
 
     healthBar.fillStyle(0x333333);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth, barHeight);
 
     healthBar.fillStyle(0x00ff00);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth * healthPercent, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth * healthPercent, barHeight);
   }
 
   private spawnMonster(data: MonsterData): void {
@@ -1091,17 +1136,18 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 5;
 
     healthBar.fillStyle(0x333333);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth, barHeight);
 
     healthBar.fillStyle(healthPercent > 0.3 ? 0xff4444 : 0xff0000);
-    healthBar.fillRect(sprite.x - barWidth / 2, sprite.y - 41, barWidth * healthPercent, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth * healthPercent, barHeight);
   }
 
   // === Utilitaires ===
 
   private updatePlayerBars(): void {
-    const x = this.player.x;
-    const y = this.player.y;
+    // Arrondi comme le rendu du sprite (roundPixels) pour rester alignées au pixel
+    const x = Math.floor(this.player.x);
+    const y = Math.floor(this.player.y);
 
     // Barre de vie
     this.playerHealthBar.clear();
@@ -1110,20 +1156,20 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 4;
 
     this.playerHealthBar.fillStyle(0x333333);
-    this.playerHealthBar.fillRect(x - barWidth / 2, y - 34, barWidth, barHeight);
+    this.playerHealthBar.fillRect(x - barWidth / 2, y - 40, barWidth, barHeight);
 
     this.playerHealthBar.fillStyle(0x00ff00);
-    this.playerHealthBar.fillRect(x - barWidth / 2, y - 34, barWidth * healthPercent, barHeight);
+    this.playerHealthBar.fillRect(x - barWidth / 2, y - 40, barWidth * healthPercent, barHeight);
 
     // Barre de mana
     this.playerManaBar.clear();
     const manaPercent = this.characterData.mana / this.characterData.maxMana;
 
     this.playerManaBar.fillStyle(0x333333);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 29, barWidth, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y - 35, barWidth, barHeight);
 
     this.playerManaBar.fillStyle(0x0088ff);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 29, barWidth * manaPercent, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y - 35, barWidth * manaPercent, barHeight);
   }
 
   private broadcastPosition(): void {
