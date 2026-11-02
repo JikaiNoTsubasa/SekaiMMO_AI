@@ -28,7 +28,8 @@ export interface SkillData {
   damageType: DamageType;
   element: MagicElement;
   baseDamage: number;
-  damageScaling: number;
+  attackScaling: number; // % de l'attaque (0.6 = 60%)
+  magicScaling: number; // % de la magie (0.6 = 60%)
   manaCost: number;
   cooldown: number;
   range: number;
@@ -48,7 +49,8 @@ export interface AutoAttackProfile {
   attacksPerSecond: number;
   masteryNames: string[];
   masteryFlatDamage: number;
-  masteryMultiplier: number;
+  masteryAttackScaling: number;
+  masteryMagicScaling: number;
 }
 
 // Données d'un personnage

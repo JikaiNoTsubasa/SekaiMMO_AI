@@ -1007,17 +1007,20 @@ export class GameServer {
       monsters
     );
 
-    // Statistiques du joueur pour le calcul de dégâts
-    const attackerStats = {
-      physicalAttack: character.physicalAttack,
-      magicalAttack: character.magicalAttack,
-      physicalDefense: character.physicalDefense,
-      magicalDefense: character.magicalDefense,
-      physicalPenetration: character.physicalPenetration,
-      magicalPenetration: character.magicalPenetration,
-      critChance: character.critChance,
-      critDamage: character.critDamage,
-    };
+    // Statistiques totales du joueur (perso + arme équipée) pour les ratios du skill
+    const attackerStats = combatService.applyWeaponStats(
+      {
+        physicalAttack: character.physicalAttack,
+        magicalAttack: character.magicalAttack,
+        physicalDefense: character.physicalDefense,
+        magicalDefense: character.magicalDefense,
+        physicalPenetration: character.physicalPenetration,
+        magicalPenetration: character.magicalPenetration,
+        critChance: character.critChance,
+        critDamage: character.critDamage,
+      },
+      player.autoAttack.weaponStats
+    );
 
     // Infliger les dégâts aux monstres touchés
     for (const monster of hitMonsters) {
@@ -1032,13 +1035,12 @@ export class GameServer {
         critDamage: 1.5,
       };
 
-      const damageResult = combatService.calculateDamage(
-        attackerStats,
-        defenderStats,
-        skill.baseDamage,
-        skill.damageScaling,
-        skill.damageType as DamageType
-      );
+      const damageResult = combatService.calculateDamage(attackerStats, defenderStats, {
+        baseDamage: skill.baseDamage,
+        attackScaling: skill.attackScaling,
+        magicScaling: skill.magicScaling,
+        damageType: skill.damageType as DamageType,
+      });
 
       const { killed, actualDamage } = this.spawnManager.damageMonster(
         monster.spawnId,

@@ -2,6 +2,7 @@
 // SekaiMMO v2.0
 
 import type { SkillSlot, SkillData, WeaponCode, MagicElement } from '../../game/types';
+import { formatSkillDamage } from '../../utils/skillDamage';
 
 export interface SkillEntry {
   skill: SkillData;
@@ -271,10 +272,9 @@ export class SkillsMenu {
         <div class="skill-desc">${entry.skill.description ?? ''}</div>
         <div class="skill-stats">
           ${isPassive ? `
-            <span>Auto-attaques: +${entry.skill.baseDamage} dégâts</span>
-            <span>x${entry.skill.damageScaling}</span>
+            <span>Auto-attaques: +${formatSkillDamage(entry.skill)} dégâts</span>
           ` : `
-            <span>Dégâts: ${entry.skill.baseDamage}</span>
+            <span>Dégâts: ${formatSkillDamage(entry.skill)}</span>
             <span>Mana: ${entry.skill.manaCost}</span>
             <span>CD: ${entry.skill.cooldown}s</span>
             <span>Portée: ${entry.skill.range}</span>

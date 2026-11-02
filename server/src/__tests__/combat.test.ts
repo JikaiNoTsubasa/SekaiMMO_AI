@@ -122,12 +122,13 @@ describe('combatService', () => {
   });
 
   describe('calculateSkillDamage', () => {
-    it('calcule les dégâts de skill avec base + scaling', () => {
+    it('calcule les dégâts de skill avec base + % attaque', () => {
       mockRandom(0.5);
 
       const skillParams: SkillDamageParams = {
         baseDamage: 50,
-        damageScaling: 0.5,
+        attackScaling: 0.5,
+        magicScaling: 0,
         damageType: 'PHYSICAL',
         element: 'FIRE',
       };
@@ -138,7 +139,7 @@ describe('combatService', () => {
         skillParams
       );
 
-      // rawDamage = baseDamage + (physicalAttack * scaling)
+      // rawDamage = baseDamage + (physicalAttack * attackScaling)
       // rawDamage = 50 + (100 * 0.5) = 100
       expect(result.rawDamage).toBe(100);
       expect(result.element).toBe('FIRE');
@@ -149,7 +150,8 @@ describe('combatService', () => {
 
       const skillParams: SkillDamageParams = {
         baseDamage: 100,
-        damageScaling: 0,
+        attackScaling: 0,
+        magicScaling: 0,
         damageType: 'PURE',
         element: 'NONE',
       };
@@ -172,12 +174,13 @@ describe('combatService', () => {
       expect(result.finalDamage).toBe(100);
     });
 
-    it('applique le scaling avec l\'attaque magique pour les skills magiques', () => {
+    it('applique le ratio de magie', () => {
       mockRandom(0.5);
 
       const skillParams: SkillDamageParams = {
         baseDamage: 30,
-        damageScaling: 1.0,
+        attackScaling: 0,
+        magicScaling: 1.0,
         damageType: 'MAGICAL',
         element: 'ICE',
       };
@@ -188,9 +191,24 @@ describe('combatService', () => {
         skillParams
       );
 
-      // rawDamage = baseDamage + (magicalAttack * scaling)
+      // rawDamage = baseDamage + (magicalAttack * magicScaling)
       // rawDamage = 30 + (80 * 1.0) = 110
       expect(result.rawDamage).toBe(110);
+    });
+
+    it('cumule le ratio d\'attaque et le ratio de magie (skill hybride)', () => {
+      mockRandom(0.5);
+
+      const result = combatService.calculateSkillDamage(defaultAttacker, defaultDefender, {
+        baseDamage: 25,
+        attackScaling: 0.6,
+        magicScaling: 0.6,
+        damageType: 'MAGICAL',
+        element: 'FIRE',
+      });
+
+      // rawDamage = 25 + 100 * 0.6 + 80 * 0.6 = 133
+      expect(result.rawDamage).toBe(133);
     });
   });
 
@@ -205,7 +223,8 @@ describe('combatService', () => {
       weaponStats: {},
       masteryNames: [],
       masteryFlatDamage: 0,
-      masteryMultiplier: 1,
+      masteryAttackScaling: 0,
+      masteryMagicScaling: 0,
     };
 
     const sword: AutoAttackProfile = {
@@ -232,16 +251,16 @@ describe('combatService', () => {
       expect(result.rawDamage).toBe(105);
     });
 
-    it('applique le passif de maîtrise (bonus plat puis multiplicateur)', () => {
+    it('applique le passif de maîtrise (bonus plat + % attaque totale)', () => {
       mockRandom(0.5);
       const result = combatService.calculateAutoAttackDamage(defaultAttacker, noDefense, {
         ...sword,
         masteryNames: ['Maîtrise de l\'Épée'],
         masteryFlatDamage: 5,
-        masteryMultiplier: 1.1,
+        masteryAttackScaling: 0.1,
       });
-      // (100 + 5 + 5) * 1.1 = 121
-      expect(result.rawDamage).toBe(121);
+      // attaque totale = 100 + 5 (arme) ; 105 + 5 + 105 * 0.1 = 120.5 -> 120
+      expect(result.rawDamage).toBe(120);
     });
 
     it('une arme magique utilise l\'attaque magique', () => {

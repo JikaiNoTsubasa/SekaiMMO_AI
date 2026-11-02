@@ -97,7 +97,8 @@ export class MainScene extends Phaser.Scene {
     attacksPerSecond: 1,
     masteryNames: [],
     masteryFlatDamage: 0,
-    masteryMultiplier: 1,
+    masteryAttackScaling: 0,
+    masteryMagicScaling: 0,
   };
 
   constructor(options: MainSceneOptions) {

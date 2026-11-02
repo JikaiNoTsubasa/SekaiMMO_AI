@@ -316,7 +316,8 @@ model Skill {
 
   // Stats du skill
   baseDamage        Int   @default(0)
-  damageScaling     Float @default(1.0)   // Multiplicateur de l'attaque
+  attackScaling     Float @default(0)     // Ratio de l'attaque (physicalAttack) : 0.6 = +60%
+  magicScaling      Float @default(0)     // Ratio de la magie (magicalAttack) : 0.6 = +60%
   cooldown          Float @default(1.0)   // En secondes
   manaCost          Int   @default(10)
   range             Float @default(100)   // Portée en pixels

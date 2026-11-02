@@ -44,7 +44,8 @@ export interface SkillBarData {
       damageType: string;
       element: string;
       baseDamage: number;
-      damageScaling: number;
+      attackScaling: number;
+      magicScaling: number;
     };
   } | null;
 }

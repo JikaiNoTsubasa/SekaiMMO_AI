@@ -25,9 +25,11 @@ export interface DamageResult {
   blocked: number; // Dégâts bloqués par la défense
 }
 
+// Dégâts d'un skill (style LoL) : base + % de l'attaque + % de la magie
 export interface SkillDamageParams {
   baseDamage: number;
-  damageScaling: number;
+  attackScaling: number; // Ratio de physicalAttack (0.6 = 60%)
+  magicScaling: number; // Ratio de magicalAttack (0.6 = 60%)
   damageType: DamageType;
   element: MagicElement;
 }
@@ -45,7 +47,8 @@ export interface AutoAttackProfile {
   // Passifs de maîtrise d'arme débloqués
   masteryNames: string[];
   masteryFlatDamage: number;
-  masteryMultiplier: number;
+  masteryAttackScaling: number;
+  masteryMagicScaling: number;
 }
 
 // Constantes de combat
@@ -153,33 +156,40 @@ export const combatService = {
   },
 
   /**
+   * Stats totales = stats du personnage + bonus de l'arme équipée
+   */
+  applyWeaponStats(attackerStats: CombatStats, weaponStats: Partial<CombatStats>): CombatStats {
+    const total = { ...attackerStats };
+    for (const key of COMBAT_STAT_KEYS) {
+      total[key] += weaponStats[key] ?? 0;
+    }
+    return total;
+  },
+
+  /**
    * Calcule les dégâts d'une auto-attaque
-   * Dégâts = (stat d'attaque du perso + dégâts de l'arme + bonus de maîtrise) * multiplicateur de maîtrise
-   * Sans arme : uniquement la stat d'attaque physique du perso
+   * Dégâts = attaque totale (perso + arme) + maîtrise (bonus plat + % attaque + % magie)
+   * L'attaque utilisée dépend du type de dégâts de l'arme ; sans arme : attaque physique du perso
    */
   calculateAutoAttackDamage(
     attackerStats: CombatStats,
     defenderStats: CombatStats,
     profile: AutoAttackProfile
   ): DamageResult {
+    const totalStats = this.applyWeaponStats(attackerStats, profile.weaponStats);
     const isPhysical = profile.damageType === 'PHYSICAL';
-    const characterPower = isPhysical ? attackerStats.physicalAttack : attackerStats.magicalAttack;
-    const weaponPower = (isPhysical ? profile.weaponStats.physicalAttack : profile.weaponStats.magicalAttack) ?? 0;
-    const attackPower = Math.floor(
-      (characterPower + weaponPower + profile.masteryFlatDamage) * profile.masteryMultiplier
+    const basePower = isPhysical ? totalStats.physicalAttack : totalStats.magicalAttack;
+    const masteryBonus =
+      profile.masteryFlatDamage +
+      totalStats.physicalAttack * profile.masteryAttackScaling +
+      totalStats.magicalAttack * profile.masteryMagicScaling;
+    const attackPower = Math.floor(basePower + masteryBonus);
+
+    return this.calculateBasicAttackDamage(
+      { ...totalStats, physicalAttack: attackPower, magicalAttack: attackPower },
+      defenderStats,
+      profile.damageType
     );
-
-    const effectiveStats: CombatStats = {
-      ...attackerStats,
-      physicalAttack: attackPower,
-      magicalAttack: attackPower,
-      physicalPenetration: attackerStats.physicalPenetration + (profile.weaponStats.physicalPenetration ?? 0),
-      magicalPenetration: attackerStats.magicalPenetration + (profile.weaponStats.magicalPenetration ?? 0),
-      critChance: attackerStats.critChance + (profile.weaponStats.critChance ?? 0),
-      critDamage: attackerStats.critDamage + (profile.weaponStats.critDamage ?? 0),
-    };
-
-    return this.calculateBasicAttackDamage(effectiveStats, defenderStats, profile.damageType);
   },
 
   /**
@@ -213,7 +223,8 @@ export const combatService = {
         weaponStats: {},
         masteryNames: [],
         masteryFlatDamage: 0,
-        masteryMultiplier: 1,
+        masteryAttackScaling: 0,
+        masteryMagicScaling: 0,
       };
     }
 
@@ -235,9 +246,10 @@ export const combatService = {
       attacksPerSecond: character.attackSpeed * ATTACK_SPEED_MODIFIERS[weaponType.attackSpeed],
       weaponStats: parseItemCombatStats(weapon.stats),
       masteryNames: masteries.map((m) => m.skill.name),
-      // Pour un passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur
+      // Un passif de maîtrise ajoute ses dégâts (base + ratios) à chaque auto-attaque
       masteryFlatDamage: masteries.reduce((sum, m) => sum + m.skill.baseDamage, 0),
-      masteryMultiplier: masteries.reduce((mult, m) => mult * m.skill.damageScaling, 1),
+      masteryAttackScaling: masteries.reduce((sum, m) => sum + m.skill.attackScaling, 0),
+      masteryMagicScaling: masteries.reduce((sum, m) => sum + m.skill.magicScaling, 0),
     };
   },
 
@@ -249,12 +261,9 @@ export const combatService = {
     defenderStats: CombatStats,
     skillParams: SkillDamageParams
   ): DamageResult {
-    const { baseDamage, damageScaling, damageType, element } = skillParams;
+    const { baseDamage, attackScaling, magicScaling, damageType, element } = skillParams;
     const isPhysical = damageType === 'PHYSICAL';
     const isPure = damageType === 'PURE';
-
-    // Sélectionner les stats appropriées
-    const attackPower = isPhysical ? attackerStats.physicalAttack : attackerStats.magicalAttack;
 
     // Les dégâts purs ignorent les défenses
     let effectiveDefense = 0;
@@ -267,8 +276,10 @@ export const combatService = {
     // Calcul de la réduction
     const damageReduction = isPure ? 0 : effectiveDefense / (effectiveDefense + 100);
 
-    // Dégâts bruts = baseDamage + (attackPower * scaling)
-    const rawDamage = baseDamage + Math.floor(attackPower * damageScaling);
+    // Dégâts bruts = base + % attaque + % magie (le type de dégâts ne choisit que la défense appliquée)
+    const rawDamage =
+      baseDamage +
+      Math.floor(attackerStats.physicalAttack * attackScaling + attackerStats.magicalAttack * magicScaling);
 
     // Vérifier le critique
     const isCritical = Math.random() < attackerStats.critChance;
@@ -505,14 +516,10 @@ export const combatService = {
   calculateDamage(
     attackerStats: CombatStats,
     defenderStats: CombatStats,
-    baseDamage: number,
-    damageScaling: number,
-    damageType: DamageType
+    skill: Omit<SkillDamageParams, 'element'>
   ): { damage: number; isCritical: boolean } {
     const result = this.calculateSkillDamage(attackerStats, defenderStats, {
-      baseDamage,
-      damageScaling,
-      damageType,
+      ...skill,
       element: 'NONE',
     });
 

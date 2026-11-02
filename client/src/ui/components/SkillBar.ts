@@ -2,6 +2,7 @@
 // SekaiMMO v2.0
 
 import type { SkillSlot, SkillData } from '../../game/types';
+import { formatSkillDamage } from '../../utils/skillDamage';
 
 export interface SkillBarConfig {
   container: HTMLElement;
@@ -223,7 +224,7 @@ export class SkillBar {
       <div class="tooltip-title">${state.skill.name}</div>
       <div class="tooltip-desc">${state.skill.description ?? ''}</div>
       <div class="tooltip-stats">
-        <span>Dégâts: ${state.skill.baseDamage}</span>
+        <span>Dégâts: ${formatSkillDamage(state.skill)}</span>
         <span>Mana: ${state.skill.manaCost}</span>
         <span>CD: ${state.skill.cooldown}s</span>
       </div>
