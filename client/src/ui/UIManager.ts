@@ -29,6 +29,8 @@ export class UIManager {
   private skillBar!: SkillBar;
   private chatPanel!: ChatPanel;
   private inventoryPanel: InventoryPanel | null = null;
+  private equippedWeaponId: number | null = null;
+  private hasReceivedAutoAttackProfile = false;
   private skillsMenu: SkillsMenu | null = null;
   private bankPanel: BankPanel | null = null;
   private guildPanel: GuildPanel | null = null;
@@ -169,6 +171,21 @@ export class UIManager {
       })
     );
 
+    // Arme équipée (profil d'auto-attaque)
+    this.unsubscribers.push(
+      this.socketManager.on('combat:autoAttackProfile', (profile) => {
+        const changed = profile.weaponItemId !== this.equippedWeaponId;
+        this.equippedWeaponId = profile.weaponItemId;
+        if (changed && this.hasReceivedAutoAttackProfile) {
+          this.showNotification(
+            profile.weaponName ? `Arme équipée : ${profile.weaponName}` : 'Arme retirée (mains nues)',
+            'info'
+          );
+        }
+        this.hasReceivedAutoAttackProfile = true;
+      })
+    );
+
     // All skills data
     this.unsubscribers.push(
       this.socketManager.on('skills:all', (data) => {
@@ -246,6 +263,7 @@ export class UIManager {
           id: s.id,
           name: s.name,
           description: s.description,
+          category: s.category,
           baseDamage: s.baseDamage,
           damageScaling: s.damageScaling ?? 1.0,
           manaCost: s.manaCost,
@@ -432,7 +450,12 @@ export class UIManager {
         columns: 8,
         onItemClick: (_slotIndex, item) => {
           if (item && item.type === 'WEAPON') {
-            this.socketManager.equipItem(item.id);
+            // Cliquer sur l'arme équipée la retire (auto-attaques à mains nues)
+            if (item.id === this.equippedWeaponId) {
+              this.socketManager.unequipWeapon();
+            } else {
+              this.socketManager.equipItem(item.id);
+            }
           }
         },
         onItemDrop: (fromSlot, toSlot) => {

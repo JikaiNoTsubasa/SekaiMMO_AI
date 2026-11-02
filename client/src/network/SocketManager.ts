@@ -2,6 +2,7 @@
 // SekaiMMO v2.0
 
 import { io, type Socket } from 'socket.io-client';
+import type { AutoAttackProfile } from '../game/types';
 
 // Types pour les événements reçus du serveur
 export interface MonsterData {
@@ -184,11 +185,12 @@ export type SocketEvents = {
   'player:left': { characterId: number };
   'player:moved': { characterId: number; position: { x: number; y: number } };
   'player:skillCast': { characterId: number; skillId: number; slot: string; targetX: number; targetY: number };
-  'player:weaponChanged': { characterId: number; weaponCode: string };
+  'player:weaponChanged': { characterId: number; weaponCode: string | null };
   'player:reward': RewardEvent;
 
   // Combat
   'combat:damage': CombatDamageEvent;
+  'combat:autoAttackProfile': AutoAttackProfile;
 
   // Map
   'map:change': { mapCode: string; mapId: number; positionX: number; positionY: number };
@@ -197,11 +199,9 @@ export type SocketEvents = {
   // Inventaire
   'inventory:data': InventoryItem[];
   'inventory:equipped': { itemId: number; weaponCode: string };
+  'inventory:unequipped': { slot: string };
   'inventory:dropped': { itemId: number; quantity: number };
   'inventory:error': { reason: string };
-
-  // Armes
-  'weapon:switched': { weaponCode: string };
 
   // Skills
   'skills:bar': SkillBarData;
@@ -309,6 +309,7 @@ export class SocketManager {
 
     // Combat
     this.socket.on('combat:damage', (data) => this.emit('combat:damage', data));
+    this.socket.on('combat:autoAttackProfile', (data) => this.emit('combat:autoAttackProfile', data));
 
     // Map
     this.socket.on('map:change', (data) => this.emit('map:change', data));
@@ -317,11 +318,9 @@ export class SocketManager {
     // Inventaire
     this.socket.on('inventory:data', (data) => this.emit('inventory:data', data));
     this.socket.on('inventory:equipped', (data) => this.emit('inventory:equipped', data));
+    this.socket.on('inventory:unequipped', (data) => this.emit('inventory:unequipped', data));
     this.socket.on('inventory:dropped', (data) => this.emit('inventory:dropped', data));
     this.socket.on('inventory:error', (data) => this.emit('inventory:error', data));
-
-    // Armes
-    this.socket.on('weapon:switched', (data) => this.emit('weapon:switched', data));
 
     // Skills
     this.socket.on('skills:bar', (data) => this.emit('skills:bar', data));
@@ -428,9 +427,8 @@ export class SocketManager {
     this.socket?.emit('inventory:drop', { itemId, quantity });
   }
 
-  // Armes
-  switchWeapon(weaponCode: string): void {
-    this.socket?.emit('weapon:switch', { weaponCode });
+  unequipWeapon(): void {
+    this.socket?.emit('inventory:unequipWeapon');
   }
 
   // Guilde

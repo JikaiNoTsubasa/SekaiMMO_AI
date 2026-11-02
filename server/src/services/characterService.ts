@@ -93,37 +93,6 @@ export const characterService = {
         }))
       });
 
-      // Débloquer le skill de base de l'arme équipée (rang E, coût 0)
-      const basicSkill = await tx.skill.findFirst({
-        where: {
-          weaponTypeId: defaultWeapon.id,
-          requiredRank: 'E',
-          goldCost: 0,
-          category: 'ACTIVE',
-        },
-        orderBy: { id: 'asc' },
-      });
-
-      if (basicSkill) {
-        // Créer le lien skill-personnage
-        await tx.characterSkill.create({
-          data: {
-            characterId: created.id,
-            skillId: basicSkill.id,
-            isUnlocked: true,
-            assignedKey: 'Q',
-          },
-        });
-
-        // Assigner le skill au slot Q
-        await tx.character.update({
-          where: { id: created.id },
-          data: {
-            skillBindings: { Q: basicSkill.id },
-          },
-        });
-      }
-
       // Ajouter l'arme de départ à l'inventaire (Épée de Recrue)
       const starterWeapon = await tx.item.findFirst({
         where: {
@@ -141,6 +110,12 @@ export const characterService = {
             itemId: starterWeapon.id,
             quantity: 1,
           },
+        });
+
+        // L'arme de départ est équipée : les auto-attaques utilisent ses dégâts
+        await tx.character.update({
+          where: { id: created.id },
+          data: { equippedWeaponId: starterWeapon.id },
         });
       }
 

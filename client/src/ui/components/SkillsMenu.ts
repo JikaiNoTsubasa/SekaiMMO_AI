@@ -261,24 +261,32 @@ export class SkillsMenu {
 
     skills.forEach((entry) => {
       const skillEl = document.createElement('div');
-      skillEl.className = `skill-entry ${entry.isUnlocked ? 'unlocked' : 'locked'}`;
+      const isPassive = entry.skill.category === 'PASSIVE';
+      skillEl.className = `skill-entry ${entry.isUnlocked ? 'unlocked' : 'locked'}${isPassive ? ' passive' : ''}`;
       skillEl.innerHTML = `
         <div class="skill-header">
-          <span class="skill-name">${entry.skill.name}</span>
+          <span class="skill-name">${entry.skill.name}${isPassive ? ' (Passif)' : ''}</span>
           <span class="skill-rank">Rang ${entry.requiredRank}</span>
         </div>
         <div class="skill-desc">${entry.skill.description ?? ''}</div>
         <div class="skill-stats">
-          <span>Dégâts: ${entry.skill.baseDamage}</span>
-          <span>Mana: ${entry.skill.manaCost}</span>
-          <span>CD: ${entry.skill.cooldown}s</span>
-          <span>Portée: ${entry.skill.range}</span>
+          ${isPassive ? `
+            <span>Auto-attaques: +${entry.skill.baseDamage} dégâts</span>
+            <span>x${entry.skill.damageScaling}</span>
+          ` : `
+            <span>Dégâts: ${entry.skill.baseDamage}</span>
+            <span>Mana: ${entry.skill.manaCost}</span>
+            <span>CD: ${entry.skill.cooldown}s</span>
+            <span>Portée: ${entry.skill.range}</span>
+          `}
         </div>
         <div class="skill-actions">
           ${!entry.isUnlocked ? `
             <button class="btn-unlock ${entry.canUnlock ? '' : 'disabled'}" ${entry.canUnlock ? '' : 'disabled'}>
-              Débloquer (${entry.unlockCost} XP)
+              Débloquer (${entry.unlockCost} or)
             </button>
+          ` : isPassive ? `
+            <span class="assigned-info">Actif en permanence</span>
           ` : `
             <button class="btn-assign">Assigner</button>
             ${entry.assignedSlot ? `<span class="assigned-info">Touche: ${entry.assignedSlot}</span>` : ''}
@@ -294,7 +302,7 @@ export class SkillsMenu {
         });
       }
 
-      if (entry.isUnlocked) {
+      if (entry.isUnlocked && !isPassive) {
         const assignBtn = skillEl.querySelector('.btn-assign')!;
         assignBtn.addEventListener('click', () => {
           this.showSlotSelector(entry.skill.id);

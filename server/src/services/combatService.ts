@@ -1,7 +1,7 @@
 // Combat Service - Gestion des calculs de combat
 // Dégâts physiques/magiques, critiques, pénétration
 
-import type { DamageType, MagicElement } from '../generated/prisma';
+import type { AttackSpeed, DamageType, MagicElement, WeaponCode } from '../generated/prisma';
 import { prisma } from '../config/prisma';
 
 // Types pour les stats de combat
@@ -32,10 +32,76 @@ export interface SkillDamageParams {
   element: MagicElement;
 }
 
+// Profil d'attaque automatique (style MOBA) : arme équipée + stats du perso + passif de maîtrise
+export interface AutoAttackProfile {
+  weaponItemId: number | null;
+  weaponName: string | null;
+  weaponCode: WeaponCode | null;
+  damageType: DamageType;
+  range: number;
+  attacksPerSecond: number;
+  // Bonus de stats apportés par l'arme équipée (Item.stats)
+  weaponStats: Partial<CombatStats>;
+  // Passifs de maîtrise d'arme débloqués
+  masteryNames: string[];
+  masteryFlatDamage: number;
+  masteryMultiplier: number;
+}
+
 // Constantes de combat
 const CRIT_DAMAGE_MULTIPLIER = 1.5; // 150% de dégâts critiques
 const MIN_DAMAGE = 1; // Dégâts minimum
 const DEFENSE_SCALING = 0.05; // Facteur de réduction de la défense
+
+// Auto-attaques
+export const UNARMED_ATTACK_RANGE = 70;
+const MELEE_ATTACK_RANGE = 80;
+const WEAPON_ATTACK_RANGE: Partial<Record<WeaponCode, number>> = {
+  BOW: 350,
+  WAND: 300,
+  SCEPTER: 300,
+};
+const ATTACK_SPEED_MODIFIERS: Record<AttackSpeed, number> = {
+  SLOW: 0.75,
+  NORMAL: 1.0,
+  FAST: 1.35,
+};
+const COMBAT_STAT_KEYS: (keyof CombatStats)[] = [
+  'physicalAttack',
+  'magicalAttack',
+  'physicalDefense',
+  'magicalDefense',
+  'physicalPenetration',
+  'magicalPenetration',
+  'critChance',
+  'critDamage',
+];
+
+/**
+ * Extrait les bonus de combat du JSON de stats d'un item (stocké en objet ou en string)
+ */
+export function parseItemCombatStats(raw: unknown): Partial<CombatStats> {
+  let stats = raw;
+  if (typeof stats === 'string') {
+    try {
+      stats = JSON.parse(stats);
+    } catch {
+      return {};
+    }
+  }
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
+    return {};
+  }
+
+  const result: Partial<CombatStats> = {};
+  for (const key of COMBAT_STAT_KEYS) {
+    const value = (stats as Record<string, unknown>)[key];
+    if (typeof value === 'number') {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 export const combatService = {
   /**
@@ -83,6 +149,95 @@ export const combatService = {
       damageType,
       element: 'NONE',
       blocked,
+    };
+  },
+
+  /**
+   * Calcule les dégâts d'une auto-attaque
+   * Dégâts = (stat d'attaque du perso + dégâts de l'arme + bonus de maîtrise) * multiplicateur de maîtrise
+   * Sans arme : uniquement la stat d'attaque physique du perso
+   */
+  calculateAutoAttackDamage(
+    attackerStats: CombatStats,
+    defenderStats: CombatStats,
+    profile: AutoAttackProfile
+  ): DamageResult {
+    const isPhysical = profile.damageType === 'PHYSICAL';
+    const characterPower = isPhysical ? attackerStats.physicalAttack : attackerStats.magicalAttack;
+    const weaponPower = (isPhysical ? profile.weaponStats.physicalAttack : profile.weaponStats.magicalAttack) ?? 0;
+    const attackPower = Math.floor(
+      (characterPower + weaponPower + profile.masteryFlatDamage) * profile.masteryMultiplier
+    );
+
+    const effectiveStats: CombatStats = {
+      ...attackerStats,
+      physicalAttack: attackPower,
+      magicalAttack: attackPower,
+      physicalPenetration: attackerStats.physicalPenetration + (profile.weaponStats.physicalPenetration ?? 0),
+      magicalPenetration: attackerStats.magicalPenetration + (profile.weaponStats.magicalPenetration ?? 0),
+      critChance: attackerStats.critChance + (profile.weaponStats.critChance ?? 0),
+      critDamage: attackerStats.critDamage + (profile.weaponStats.critDamage ?? 0),
+    };
+
+    return this.calculateBasicAttackDamage(effectiveStats, defenderStats, profile.damageType);
+  },
+
+  /**
+   * Construit le profil d'auto-attaque d'un personnage à partir de son arme équipée
+   * et de ses passifs de maîtrise débloqués
+   */
+  async getAutoAttackProfile(characterId: number): Promise<AutoAttackProfile> {
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+      select: {
+        attackSpeed: true,
+        equippedWeapon: { include: { weaponType: true } },
+      },
+    });
+
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    const weapon = character.equippedWeapon;
+    const weaponType = weapon?.weaponType ?? null;
+
+    if (!weapon || !weaponType) {
+      return {
+        weaponItemId: null,
+        weaponName: null,
+        weaponCode: null,
+        damageType: 'PHYSICAL',
+        range: UNARMED_ATTACK_RANGE,
+        attacksPerSecond: character.attackSpeed,
+        weaponStats: {},
+        masteryNames: [],
+        masteryFlatDamage: 0,
+        masteryMultiplier: 1,
+      };
+    }
+
+    const masteries = await prisma.characterSkill.findMany({
+      where: {
+        characterId,
+        isUnlocked: true,
+        skill: { category: 'PASSIVE', weaponTypeId: weaponType.id },
+      },
+      include: { skill: true },
+    });
+
+    return {
+      weaponItemId: weapon.id,
+      weaponName: weapon.name,
+      weaponCode: weaponType.code,
+      damageType: weaponType.damageType,
+      range: WEAPON_ATTACK_RANGE[weaponType.code] ?? (weaponType.isRanged ? 300 : MELEE_ATTACK_RANGE),
+      attacksPerSecond: character.attackSpeed * ATTACK_SPEED_MODIFIERS[weaponType.attackSpeed],
+      weaponStats: parseItemCombatStats(weapon.stats),
+      masteryNames: masteries.map((m) => m.skill.name),
+      // Pour un passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur
+      masteryFlatDamage: masteries.reduce((sum, m) => sum + m.skill.baseDamage, 0),
+      masteryMultiplier: masteries.reduce((mult, m) => mult * m.skill.damageScaling, 1),
     };
   },
 

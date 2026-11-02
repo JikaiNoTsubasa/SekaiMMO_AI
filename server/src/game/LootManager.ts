@@ -25,7 +25,7 @@ export class LootManager {
   async calculateRewards(
     monster: SpawnedMonster,
     killerLevel: number,
-    weaponCode: WeaponCode
+    weaponCode: WeaponCode | null
   ): Promise<KillReward> {
     // Calculer l'XP avec bonus/malus selon la différence de niveau
     const levelDiff = monster.level - killerLevel;
@@ -114,7 +114,7 @@ export class LootManager {
   async applyRewards(
     characterId: number,
     rewards: KillReward,
-    weaponCode: WeaponCode
+    weaponCode: WeaponCode | null
   ): Promise<void> {
     // Transaction pour appliquer toutes les récompenses
     await prisma.$transaction(async (tx) => {
@@ -126,10 +126,10 @@ export class LootManager {
         },
       });
 
-      // Ajouter l'XP à l'arme
-      const weaponType = await tx.weaponType.findUnique({
-        where: { code: weaponCode as any },
-      });
+      // Ajouter l'XP à l'arme (aucune XP d'arme à mains nues)
+      const weaponType = weaponCode
+        ? await tx.weaponType.findUnique({ where: { code: weaponCode } })
+        : null;
 
       if (weaponType) {
         const existingProgress = await tx.characterWeaponProgress.findUnique({

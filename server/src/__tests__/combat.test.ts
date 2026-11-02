@@ -2,7 +2,13 @@
 // SekaiMMO v2.0
 
 import { describe, expect, it, vi } from 'vitest';
-import { combatService, type CombatStats, type SkillDamageParams } from '../services/combatService';
+import {
+  combatService,
+  parseItemCombatStats,
+  type AutoAttackProfile,
+  type CombatStats,
+  type SkillDamageParams,
+} from '../services/combatService';
 
 // Mock Math.random pour des tests déterministes
 const mockRandom = (value: number) => {
@@ -185,6 +191,88 @@ describe('combatService', () => {
       // rawDamage = baseDamage + (magicalAttack * scaling)
       // rawDamage = 30 + (80 * 1.0) = 110
       expect(result.rawDamage).toBe(110);
+    });
+  });
+
+  describe('calculateAutoAttackDamage', () => {
+    const unarmed: AutoAttackProfile = {
+      weaponItemId: null,
+      weaponName: null,
+      weaponCode: null,
+      damageType: 'PHYSICAL',
+      range: 70,
+      attacksPerSecond: 1,
+      weaponStats: {},
+      masteryNames: [],
+      masteryFlatDamage: 0,
+      masteryMultiplier: 1,
+    };
+
+    const sword: AutoAttackProfile = {
+      ...unarmed,
+      weaponItemId: 1,
+      weaponName: 'Épée de Recrue',
+      weaponCode: 'SWORD',
+      range: 80,
+      weaponStats: { physicalAttack: 5 },
+    };
+
+    const noDefense = { ...defaultDefender, physicalDefense: 0, magicalDefense: 0 };
+
+    it('sans arme, utilise uniquement les dégâts de base du personnage', () => {
+      mockRandom(0.5);
+      const result = combatService.calculateAutoAttackDamage(defaultAttacker, noDefense, unarmed);
+      expect(result.rawDamage).toBe(100);
+      expect(result.finalDamage).toBe(100);
+    });
+
+    it('avec une arme, ajoute les dégâts de l\'arme aux stats du personnage', () => {
+      mockRandom(0.5);
+      const result = combatService.calculateAutoAttackDamage(defaultAttacker, noDefense, sword);
+      expect(result.rawDamage).toBe(105);
+    });
+
+    it('applique le passif de maîtrise (bonus plat puis multiplicateur)', () => {
+      mockRandom(0.5);
+      const result = combatService.calculateAutoAttackDamage(defaultAttacker, noDefense, {
+        ...sword,
+        masteryNames: ['Maîtrise de l\'Épée'],
+        masteryFlatDamage: 5,
+        masteryMultiplier: 1.1,
+      });
+      // (100 + 5 + 5) * 1.1 = 121
+      expect(result.rawDamage).toBe(121);
+    });
+
+    it('une arme magique utilise l\'attaque magique', () => {
+      mockRandom(0.5);
+      const result = combatService.calculateAutoAttackDamage(defaultAttacker, noDefense, {
+        ...unarmed,
+        weaponCode: 'WAND',
+        damageType: 'MAGICAL',
+        weaponStats: { magicalAttack: 5 },
+      });
+      expect(result.damageType).toBe('MAGICAL');
+      expect(result.rawDamage).toBe(85);
+    });
+
+    it('le bonus de critique de l\'arme s\'ajoute à celui du personnage', () => {
+      // 0.12 > critChance du perso (0.1) mais < 0.1 + 0.05
+      mockRandom(0.12);
+      const result = combatService.calculateAutoAttackDamage(defaultAttacker, noDefense, {
+        ...sword,
+        weaponStats: { physicalAttack: 3, critChance: 0.05 },
+      });
+      expect(result.isCritical).toBe(true);
+    });
+  });
+
+  describe('parseItemCombatStats', () => {
+    it('lit les stats stockées en JSON string ou en objet', () => {
+      expect(parseItemCombatStats('{"physicalAttack":5}')).toEqual({ physicalAttack: 5 });
+      expect(parseItemCombatStats({ magicalAttack: 6, healAmount: 50 })).toEqual({ magicalAttack: 6 });
+      expect(parseItemCombatStats('invalid')).toEqual({});
+      expect(parseItemCombatStats(null)).toEqual({});
     });
   });
 

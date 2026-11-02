@@ -24,6 +24,7 @@ export interface SkillData {
   id: number;
   name: string;
   description?: string;
+  category?: 'ACTIVE' | 'PASSIVE';
   damageType: DamageType;
   element: MagicElement;
   baseDamage: number;
@@ -35,6 +36,19 @@ export interface SkillData {
   telegraphShape?: TelegraphShape;
   telegraphWidth?: number;
   telegraphLength?: number;
+}
+
+// Profil d'auto-attaque envoyé par le serveur (arme équipée + passifs de maîtrise)
+export interface AutoAttackProfile {
+  weaponItemId: number | null;
+  weaponName: string | null;
+  weaponCode: WeaponCode | null;
+  damageType: DamageType;
+  range: number;
+  attacksPerSecond: number;
+  masteryNames: string[];
+  masteryFlatDamage: number;
+  masteryMultiplier: number;
 }
 
 // Données d'un personnage

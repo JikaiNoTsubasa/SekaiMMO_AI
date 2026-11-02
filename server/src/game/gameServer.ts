@@ -9,7 +9,7 @@ import { appConfig } from '../config/env';
 import { prisma } from '../config/prisma';
 import { WeaponCode, DamageType, GuildRank } from '../generated/prisma';
 import { characterService } from '../services/characterService';
-import { combatService } from '../services/combatService';
+import { combatService, type AutoAttackProfile } from '../services/combatService';
 import { inventoryService } from '../services/inventoryService';
 import { skillService } from '../services/skillService';
 import { guildService } from '../services/guildService';
@@ -30,8 +30,14 @@ interface ConnectedPlayer {
   mapId: number;
   positionX: number;
   positionY: number;
-  weaponCode: string;
+  weaponCode: string | null;
+  autoAttack: AutoAttackProfile;
+  lastAutoAttackAt: number;
 }
+
+// Marge de tolérance (latence / désync de position) pour les auto-attaques
+const AUTO_ATTACK_RANGE_TOLERANCE = 40;
+const AUTO_ATTACK_TIMING_TOLERANCE = 0.85;
 
 // Schémas de validation
 const movementSchema = z.object({
@@ -44,6 +50,10 @@ const skillCastSchema = z.object({
   slot: z.string(),
   targetX: z.number(),
   targetY: z.number(),
+});
+
+const autoAttackSchema = z.object({
+  targetId: z.number().int().positive(),
 });
 
 const mapChangeSchema = z.object({
@@ -64,10 +74,6 @@ const equipItemSchema = z.object({
 const dropItemSchema = z.object({
   itemId: z.number().int().positive(),
   quantity: z.number().int().positive(),
-});
-
-const switchWeaponSchema = z.object({
-  weaponCode: z.enum(['SWORD', 'SPEAR', 'DAGGER', 'BOW', 'STAFF', 'FIST']),
 });
 
 // Schémas pour les skills
@@ -317,14 +323,18 @@ export class GameServer {
     }
 
     // Enregistrer le joueur
+    const autoAttack = await combatService.getAutoAttackProfile(characterId);
     this.connectedPlayers.set(characterId, {
       socketId: socket.id,
       characterId,
       mapId,
       positionX: character.positionX,
       positionY: character.positionY,
-      weaponCode: character.equippedWeaponType?.code ?? 'SWORD',
+      weaponCode: autoAttack.weaponCode,
+      autoAttack,
+      lastAutoAttackAt: oldPlayer?.lastAutoAttackAt ?? 0,
     });
+    socket.emit('combat:autoAttackProfile', autoAttack);
 
     // Mettre à jour la position dans l'AI
     this.monsterAI.updatePlayerPosition(characterId, mapId, character.positionX, character.positionY);
@@ -377,6 +387,16 @@ export class GameServer {
         await this.handleSkillCast(socket, characterId, data);
       } catch (error) {
         console.error('[skill:cast]', error);
+      }
+    });
+
+    // Auto-attaque (indépendante des compétences)
+    socket.on('combat:autoAttack', async (payload) => {
+      try {
+        const data = autoAttackSchema.parse(payload);
+        await this.handleAutoAttack(socket, characterId, data.targetId);
+      } catch (error) {
+        console.error('[combat:autoAttack]', error);
       }
     });
 
@@ -463,19 +483,40 @@ export class GameServer {
           return;
         }
 
+        const owned = await prisma.inventoryItem.findUnique({
+          where: { characterId_itemId: { characterId, itemId: item.id } },
+        });
+        if (!owned) {
+          socket.emit('inventory:error', { reason: 'Item not in inventory' });
+          return;
+        }
+
         await prisma.character.update({
           where: { id: characterId },
-          data: { equippedWeaponTypeId: item.weaponTypeId },
+          data: { equippedWeaponId: item.id, equippedWeaponTypeId: item.weaponTypeId },
         });
 
-        const player = this.connectedPlayers.get(characterId);
-        if (player && item.weaponType) {
-          player.weaponCode = item.weaponType.code;
-        }
+        await this.refreshAutoAttackProfile(socket, characterId);
 
         socket.emit('inventory:equipped', { itemId: data.itemId, weaponCode: item.weaponType?.code ?? null });
       } catch (error) {
         console.error('[inventory:equip]', error);
+      }
+    });
+
+    // Déséquiper l'arme (retour aux attaques à mains nues)
+    socket.on('inventory:unequipWeapon', async () => {
+      try {
+        await prisma.character.update({
+          where: { id: characterId },
+          data: { equippedWeaponId: null, equippedWeaponTypeId: null },
+        });
+
+        await this.refreshAutoAttackProfile(socket, characterId);
+
+        socket.emit('inventory:unequipped', { slot: 'MAIN_HAND' });
+      } catch (error) {
+        console.error('[inventory:unequipWeapon]', error);
       }
     });
 
@@ -494,6 +535,16 @@ export class GameServer {
 
         if (inventoryItem.quantity === data.quantity) {
           await prisma.inventoryItem.delete({ where: { id: inventoryItem.id } });
+
+          // Jeter l'arme équipée la déséquipe
+          const unequipped = await prisma.character.updateMany({
+            where: { id: characterId, equippedWeaponId: data.itemId },
+            data: { equippedWeaponId: null, equippedWeaponTypeId: null },
+          });
+          if (unequipped.count > 0) {
+            await this.refreshAutoAttackProfile(socket, characterId);
+            socket.emit('inventory:unequipped', { slot: 'MAIN_HAND' });
+          }
         } else {
           await prisma.inventoryItem.update({
             where: { id: inventoryItem.id },
@@ -504,41 +555,6 @@ export class GameServer {
         socket.emit('inventory:dropped', { itemId: data.itemId, quantity: data.quantity });
       } catch (error) {
         console.error('[inventory:drop]', error);
-      }
-    });
-
-    // Changer d'arme
-    socket.on('weapon:switch', async (payload) => {
-      try {
-        const data = switchWeaponSchema.parse(payload);
-
-        // Trouver le type d'arme par son code
-        const weaponType = await prisma.weaponType.findUnique({
-          where: { code: data.weaponCode as any },
-        });
-
-        if (!weaponType) {
-          socket.emit('weapon:error', { reason: 'Invalid weapon type' });
-          return;
-        }
-
-        await prisma.character.update({
-          where: { id: characterId },
-          data: { equippedWeaponTypeId: weaponType.id },
-        });
-
-        const player = this.connectedPlayers.get(characterId);
-        if (player) {
-          player.weaponCode = data.weaponCode;
-        }
-
-        socket.emit('weapon:switched', { weaponCode: data.weaponCode });
-        socket.to(`map:${player?.mapId}`).emit('player:weaponChanged', {
-          characterId,
-          weaponCode: data.weaponCode,
-        });
-      } catch (error) {
-        console.error('[weapon:switch]', error);
       }
     });
 
@@ -572,6 +588,11 @@ export class GameServer {
         const data = learnSkillSchema.parse(payload);
         const result = await skillService.learnSkill(characterId, data.skillId);
         socket.emit('skills:learned', result);
+
+        // Un passif de maîtrise modifie les auto-attaques
+        if (result.success) {
+          await this.refreshAutoAttackProfile(socket, characterId);
+        }
       } catch (error: any) {
         socket.emit('skills:error', { reason: error.message || 'Cannot learn skill' });
       }
@@ -839,6 +860,92 @@ export class GameServer {
   }
 
   /**
+   * Recalcule le profil d'auto-attaque (arme équipée, maîtrises) et le transmet au client
+   */
+  private async refreshAutoAttackProfile(socket: Socket, characterId: number): Promise<void> {
+    const autoAttack = await combatService.getAutoAttackProfile(characterId);
+    const player = this.connectedPlayers.get(characterId);
+    if (player) {
+      const weaponChanged = player.weaponCode !== autoAttack.weaponCode;
+      player.autoAttack = autoAttack;
+      player.weaponCode = autoAttack.weaponCode;
+
+      if (weaponChanged) {
+        socket.to(`map:${player.mapId}`).emit('player:weaponChanged', {
+          characterId,
+          weaponCode: autoAttack.weaponCode,
+        });
+      }
+    }
+    socket.emit('combat:autoAttackProfile', autoAttack);
+  }
+
+  /**
+   * Gère une auto-attaque sur un monstre (style MOBA : pas de compétence, pas de mana)
+   */
+  private async handleAutoAttack(socket: Socket, characterId: number, targetId: number): Promise<void> {
+    const player = this.connectedPlayers.get(characterId);
+    if (!player) return;
+
+    const profile = player.autoAttack;
+
+    // Vérifier la cadence d'attaque
+    const now = Date.now();
+    const minInterval = (1000 / profile.attacksPerSecond) * AUTO_ATTACK_TIMING_TOLERANCE;
+    if (now - player.lastAutoAttackAt < minInterval) return;
+
+    const monster = this.spawnManager.getMonster(targetId);
+    if (!monster || monster.mapId !== player.mapId || monster.isDead) return;
+
+    // Vérifier la portée
+    const distance = Math.hypot(monster.positionX - player.positionX, monster.positionY - player.positionY);
+    if (distance > profile.range + AUTO_ATTACK_RANGE_TOLERANCE) {
+      socket.emit('combat:autoAttackFailed', { reason: 'Out of range' });
+      return;
+    }
+
+    player.lastAutoAttackAt = now;
+
+    const attackerStats = await combatService.getCharacterCombatStats(characterId);
+    const defenderStats = {
+      physicalAttack: monster.physicalAttack,
+      magicalAttack: monster.magicalAttack,
+      physicalDefense: monster.physicalDefense,
+      magicalDefense: monster.magicalDefense,
+      physicalPenetration: 0,
+      magicalPenetration: 0,
+      critChance: 0,
+      critDamage: 1.5,
+    };
+
+    const result = combatService.calculateAutoAttackDamage(attackerStats, defenderStats, profile);
+    const { killed, actualDamage } = this.spawnManager.damageMonster(
+      monster.spawnId,
+      result.finalDamage,
+      characterId
+    );
+
+    this.io.to(`map:${player.mapId}`).emit('player:autoAttack', {
+      characterId,
+      targetId: monster.spawnId,
+      weaponCode: profile.weaponCode,
+    });
+
+    this.io.to(`map:${player.mapId}`).emit('combat:damage', {
+      targetId: monster.spawnId,
+      targetType: 'monster',
+      damage: actualDamage,
+      isCritical: result.isCritical,
+      damageType: result.damageType,
+      element: result.element,
+    });
+
+    if (killed) {
+      await this.handleMonsterKill(socket, characterId, monster);
+    }
+  }
+
+  /**
    * Gère le cast d'un skill
    */
   private async handleSkillCast(
@@ -977,11 +1084,11 @@ export class GameServer {
     const rewards = await this.lootManager.calculateRewards(
       fullMonster,
       character.level,
-      player.weaponCode as WeaponCode
+      player.weaponCode as WeaponCode | null
     );
 
     // Appliquer les récompenses
-    await this.lootManager.applyRewards(characterId, rewards, player.weaponCode as WeaponCode);
+    await this.lootManager.applyRewards(characterId, rewards, player.weaponCode as WeaponCode | null);
 
     // Émettre les événements
     this.io.to(`map:${player.mapId}`).emit('monster:defeated', {

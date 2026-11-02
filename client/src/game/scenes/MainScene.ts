@@ -14,6 +14,7 @@ import type {
   SkillCastEvent,
   PlayerMovedEvent,
   MonsterData,
+  AutoAttackProfile,
 } from '../types';
 import { InputManager, type InputEvent } from '../systems/InputManager';
 import { TelegraphManager } from '../systems/SkillTelegraph';
@@ -84,9 +85,20 @@ export class MainScene extends Phaser.Scene {
   // Cooldowns des skills
   private skillCooldowns: Map<SkillSlot, number> = new Map();
 
-  // Auto-attaque
+  // Auto-attaque (indépendante des compétences, style MOBA)
   private autoAttackTarget: number | null = null;
-  private readonly AUTO_ATTACK_RANGE = 80; // Portée d'auto-attaque (alignée sur compétences de base)
+  private autoAttackCooldown: number = 0; // Secondes avant la prochaine attaque
+  private autoAttackProfile: AutoAttackProfile = {
+    weaponItemId: null,
+    weaponName: null,
+    weaponCode: null,
+    damageType: 'PHYSICAL',
+    range: 70,
+    attacksPerSecond: 1,
+    masteryNames: [],
+    masteryFlatDamage: 0,
+    masteryMultiplier: 1,
+  };
 
   constructor(options: MainSceneOptions) {
     super('MainScene');
@@ -366,6 +378,21 @@ export class MainScene extends Phaser.Scene {
       this.handleDamage(payload);
     });
 
+    // Profil d'auto-attaque (change avec l'arme équipée et les maîtrises)
+    socket.on('combat:autoAttackProfile', (profile: AutoAttackProfile) => {
+      this.autoAttackProfile = profile;
+    });
+
+    // Auto-attaques des autres joueurs (effet visuel)
+    socket.on('player:autoAttack', (payload: { characterId: number; targetId: number; weaponCode: string | null }) => {
+      if (payload.characterId === this.characterData.id) return;
+      const attacker = this.otherPlayers.get(payload.characterId);
+      const monster = this.monsters.get(payload.targetId);
+      if (!attacker || !monster) return;
+      const isMagical = payload.weaponCode === 'WAND' || payload.weaponCode === 'SCEPTER';
+      this.playAutoAttackEffect(attacker.sprite.x, attacker.sprite.y, monster.sprite.x, monster.sprite.y, isMagical);
+    });
+
     // Monstre vaincu
     socket.on('monster:defeated', (payload: MonsterDefeatedEvent) => {
       this.handleMonsterDefeated(payload);
@@ -460,6 +487,7 @@ export class MainScene extends Phaser.Scene {
     }
 
     // Auto-attaque
+    this.autoAttackCooldown = Math.max(0, this.autoAttackCooldown - delta / 1000);
     this.updateAutoAttack(time, delta);
 
     // Mouvement du joueur
@@ -498,8 +526,10 @@ export class MainScene extends Phaser.Scene {
       monster.sprite.y
     );
 
+    const range = this.autoAttackProfile.range;
+
     // Si trop loin, se rapprocher
-    if (distance > this.AUTO_ATTACK_RANGE) {
+    if (distance > range) {
       // Calculer la position intermédiaire (à portée d'attaque)
       const angle = Phaser.Math.Angle.Between(
         this.player.x,
@@ -507,8 +537,8 @@ export class MainScene extends Phaser.Scene {
         monster.sprite.x,
         monster.sprite.y
       );
-      const targetX = monster.sprite.x - Math.cos(angle) * (this.AUTO_ATTACK_RANGE - 20);
-      const targetY = monster.sprite.y - Math.sin(angle) * (this.AUTO_ATTACK_RANGE - 20);
+      const targetX = monster.sprite.x - Math.cos(angle) * (range - 20);
+      const targetY = monster.sprite.y - Math.sin(angle) * (range - 20);
 
       // Se déplacer vers la cible
       const speed = this.characterData.movementSpeed;
@@ -522,20 +552,34 @@ export class MainScene extends Phaser.Scene {
         this.player.y = Phaser.Math.Clamp(nextY, 0, this.mapData.height);
         this.updatePlayerBars();
       }
-    } else {
-      // À portée - attaquer avec le skill Q (attaque de base)
-      const basicSkill = this.skills.get('Q');
-      const cooldown = this.skillCooldowns.get('Q') ?? 0;
+    } else if (this.autoAttackCooldown <= 0) {
+      // À portée - auto-attaque (arme équipée ou mains nues), aucune compétence requise
+      this.autoAttackCooldown = 1 / this.autoAttackProfile.attacksPerSecond;
+      const isMagical = this.autoAttackProfile.damageType === 'MAGICAL';
+      this.playAutoAttackEffect(this.player.x, this.player.y, monster.sprite.x, monster.sprite.y, isMagical);
+      this.options.socket.emit('combat:autoAttack', { targetId: monster.spawnId });
+    }
+  }
 
-      if (basicSkill && cooldown <= 0) {
-        // Lancer l'attaque vers le monstre
-        this.handleSkillCast({
-          slot: 'Q',
-          skill: basicSkill,
-          targetX: monster.sprite.x,
-          targetY: monster.sprite.y,
-        });
-      }
+  /**
+   * Effet visuel d'une auto-attaque : projectile pour les armes à distance, impact au corps à corps
+   */
+  private playAutoAttackEffect(fromX: number, fromY: number, toX: number, toY: number, isMagical: boolean): void {
+    const color = isMagical ? 0x9b6bff : 0xffffff;
+    const distance = Phaser.Math.Distance.Between(fromX, fromY, toX, toY);
+
+    if (distance > 120) {
+      this.combatManager.createProjectile({
+        startX: fromX,
+        startY: fromY,
+        targetX: toX,
+        targetY: toY,
+        speed: 900,
+        color,
+        size: 3,
+      });
+    } else {
+      this.combatManager.createImpactEffect(toX, toY, color);
     }
   }
 
@@ -1139,6 +1183,8 @@ export class MainScene extends Phaser.Scene {
     socket.off('player:moved');
     socket.off('player:skillCast');
     socket.off('combat:damage');
+    socket.off('combat:autoAttackProfile');
+    socket.off('player:autoAttack');
     socket.off('monster:defeated');
     socket.off('monster:spawn');
     socket.off('monsters:initial');

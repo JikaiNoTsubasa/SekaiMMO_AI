@@ -98,29 +98,44 @@ async function main() {
   });
 
   // ============================================
-  // SKILLS DE BASE (Rank E pour chaque arme)
+  // SKILLS (Rank E pour chaque arme)
+  // Les attaques automatiques ne sont pas des compétences : chaque arme
+  // possède un passif de maîtrise (à acheter) qui les renforce.
   // ============================================
+  console.log('Removing legacy basic-attack skills...');
+
+  const legacyBasicAttackSkills = await prisma.skill.findMany({
+    where: { name: { in: ['Frappe Basique', 'Double Entaille', 'Tir Simple', 'Coup de Hache', 'Orbe Arcanique', 'Rayon Mystique'] } },
+    select: { id: true },
+  });
+  const legacySkillIds = legacyBasicAttackSkills.map((skill) => skill.id);
+  if (legacySkillIds.length > 0) {
+    await prisma.characterSkill.deleteMany({ where: { skillId: { in: legacySkillIds } } });
+    await prisma.skill.deleteMany({ where: { id: { in: legacySkillIds } } });
+  }
+
   console.log('Creating skills...');
 
   // -- Épée --
   await prisma.skill.upsert({
-    where: { name: 'Frappe Basique' },
+    where: { name: 'Maîtrise de l\'Épée' },
     update: {},
     create: {
-      name: 'Frappe Basique',
-      description: 'Une frappe simple avec l\'épée.',
-      category: 'ACTIVE',
+      name: 'Maîtrise de l\'Épée',
+      description: 'Passif : vos attaques automatiques à l\'épée infligent +5 dégâts puis 10% de dégâts supplémentaires.',
+      category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
       weaponTypeId: sword.id,
       requiredRank: 'E',
       requiredWeaponXp: 0,
-      goldCost: 0,
-      baseDamage: 15,
-      damageScaling: 1.0,
-      cooldown: 0.5,
+      goldCost: 150,
+      // Passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur des auto-attaques
+      baseDamage: 5,
+      damageScaling: 1.1,
+      cooldown: 0,
       manaCost: 0,
-      range: 80,
+      range: 0,
       areaOfEffect: 0,
       telegraphShape: null,
     },
@@ -177,23 +192,24 @@ async function main() {
 
   // -- Double Dagues --
   await prisma.skill.upsert({
-    where: { name: 'Double Entaille' },
+    where: { name: 'Maîtrise des Dagues' },
     update: {},
     create: {
-      name: 'Double Entaille',
-      description: 'Deux coups rapides avec les dagues.',
-      category: 'ACTIVE',
+      name: 'Maîtrise des Dagues',
+      description: 'Passif : vos attaques automatiques aux dagues infligent +3 dégâts puis 10% de dégâts supplémentaires.',
+      category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
       weaponTypeId: dualDaggers.id,
       requiredRank: 'E',
       requiredWeaponXp: 0,
-      goldCost: 0,
-      baseDamage: 8,
-      damageScaling: 0.6,
-      cooldown: 0.3,
+      goldCost: 150,
+      // Passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur des auto-attaques
+      baseDamage: 3,
+      damageScaling: 1.1,
+      cooldown: 0,
       manaCost: 0,
-      range: 60,
+      range: 0,
       areaOfEffect: 0,
       telegraphShape: null,
     },
@@ -248,27 +264,26 @@ async function main() {
 
   // -- Arc --
   await prisma.skill.upsert({
-    where: { name: 'Tir Simple' },
+    where: { name: 'Maîtrise de l\'Arc' },
     update: {},
     create: {
-      name: 'Tir Simple',
-      description: 'Un tir de flèche basique.',
-      category: 'ACTIVE',
+      name: 'Maîtrise de l\'Arc',
+      description: 'Passif : vos attaques automatiques à l\'arc infligent +4 dégâts puis 10% de dégâts supplémentaires.',
+      category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
       weaponTypeId: bow.id,
       requiredRank: 'E',
       requiredWeaponXp: 0,
-      goldCost: 0,
-      baseDamage: 14,
-      damageScaling: 1.0,
-      cooldown: 0.7,
+      goldCost: 150,
+      // Passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur des auto-attaques
+      baseDamage: 4,
+      damageScaling: 1.1,
+      cooldown: 0,
       manaCost: 0,
-      range: 400,
+      range: 0,
       areaOfEffect: 0,
-      telegraphShape: 'line',
-      telegraphWidth: 10,
-      telegraphLength: 400,
+      telegraphShape: null,
     },
   });
 
@@ -325,23 +340,24 @@ async function main() {
 
   // -- Hache à deux mains --
   await prisma.skill.upsert({
-    where: { name: 'Coup de Hache' },
+    where: { name: 'Maîtrise de la Hache' },
     update: {},
     create: {
-      name: 'Coup de Hache',
-      description: 'Un coup puissant de hache.',
-      category: 'ACTIVE',
+      name: 'Maîtrise de la Hache',
+      description: 'Passif : vos attaques automatiques à la hache infligent +8 dégâts puis 10% de dégâts supplémentaires.',
+      category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
       weaponTypeId: twoHandedAxe.id,
       requiredRank: 'E',
       requiredWeaponXp: 0,
-      goldCost: 0,
-      baseDamage: 25,
-      damageScaling: 1.3,
-      cooldown: 1.5,
+      goldCost: 150,
+      // Passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur des auto-attaques
+      baseDamage: 8,
+      damageScaling: 1.1,
+      cooldown: 0,
       manaCost: 0,
-      range: 100,
+      range: 0,
       areaOfEffect: 0,
       telegraphShape: null,
     },
@@ -400,23 +416,24 @@ async function main() {
 
   // -- Baguette --
   await prisma.skill.upsert({
-    where: { name: 'Orbe Arcanique' },
+    where: { name: 'Maîtrise de la Baguette' },
     update: {},
     create: {
-      name: 'Orbe Arcanique',
-      description: 'Lance une boule de magie pure.',
-      category: 'ACTIVE',
+      name: 'Maîtrise de la Baguette',
+      description: 'Passif : vos attaques automatiques à la baguette infligent +4 dégâts puis 10% de dégâts supplémentaires.',
+      category: 'PASSIVE',
       damageType: 'MAGICAL',
       element: 'NONE',
       weaponTypeId: wand.id,
       requiredRank: 'E',
       requiredWeaponXp: 0,
-      goldCost: 0,
-      baseDamage: 10,
-      damageScaling: 1.0,
-      cooldown: 0.4,
-      manaCost: 5,
-      range: 350,
+      goldCost: 150,
+      // Passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur des auto-attaques
+      baseDamage: 4,
+      damageScaling: 1.1,
+      cooldown: 0,
+      manaCost: 0,
+      range: 0,
       areaOfEffect: 0,
       telegraphShape: null,
     },
@@ -476,27 +493,26 @@ async function main() {
 
   // -- Sceptre --
   await prisma.skill.upsert({
-    where: { name: 'Rayon Mystique' },
+    where: { name: 'Maîtrise du Sceptre' },
     update: {},
     create: {
-      name: 'Rayon Mystique',
-      description: 'Lance un rayon de magie concentrée.',
-      category: 'ACTIVE',
+      name: 'Maîtrise du Sceptre',
+      description: 'Passif : vos attaques automatiques au sceptre infligent +5 dégâts puis 10% de dégâts supplémentaires.',
+      category: 'PASSIVE',
       damageType: 'MAGICAL',
       element: 'NONE',
       weaponTypeId: scepter.id,
       requiredRank: 'E',
       requiredWeaponXp: 0,
-      goldCost: 0,
-      baseDamage: 15,
+      goldCost: 150,
+      // Passif de maîtrise : baseDamage = bonus plat, damageScaling = multiplicateur des auto-attaques
+      baseDamage: 5,
       damageScaling: 1.1,
-      cooldown: 0.8,
-      manaCost: 8,
-      range: 400,
+      cooldown: 0,
+      manaCost: 0,
+      range: 0,
       areaOfEffect: 0,
-      telegraphShape: 'line',
-      telegraphWidth: 20,
-      telegraphLength: 400,
+      telegraphShape: null,
     },
   });
 
