@@ -1,0 +1,469 @@
+/* Thème médiéval - bois, pierre, fer et parchemin */
+/* Chargé en dernier : surcharge l'apparence des fenêtres sans toucher à la mise en page */
+
+.game-ui {
+  --wood-light: #8a5a30;
+  --wood: #6b4423;
+  --wood-dark: #4a2e17;
+  --wood-darker: #2e1b0d;
+  --stone-light: #8b8680;
+  --stone: #6a655f;
+  --stone-dark: #46423d;
+  --iron: #2a2724;
+  --parchment: #e8d5a3;
+  --parchment-dim: #b9a477;
+  --gold: #d9a73a;
+  --gold-dark: #8a6420;
+  --blood: #8b2a1f;
+
+  --font-title: 'Press Start 2P', 'Palatino Linotype', Georgia, serif;
+  --font-body: var(--font-title);
+
+  /* Aplats de couleur (pas de texture ni de dégradé) */
+  --wood-texture: var(--wood);
+  --stone-texture: var(--stone);
+
+  font-family: var(--font-body);
+}
+
+/* ============================================
+   FENÊTRES : cadre de bois cerclé de fer
+   ============================================ */
+
+.inventory-panel,
+.bank-panel,
+.guild-panel,
+.settings-panel,
+.skills-menu,
+.chat-panel,
+.skill-bar-inner {
+  background: var(--wood-texture);
+  border: 4px solid var(--wood-darker);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 0 0 2px var(--wood-light),
+    inset 0 0 0 4px var(--wood-darker),
+    0 0 0 2px var(--iron),
+    0 10px 28px rgba(0, 0, 0, 0.75);
+  color: var(--parchment);
+  font-family: var(--font-body);
+}
+
+/* En-têtes : barre de pierre */
+.panel-header,
+.chat-header {
+  background: var(--stone-texture);
+  border-bottom: 3px solid var(--iron);
+  border-radius: 0;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.15);
+}
+
+.panel-title {
+  font-family: var(--font-title);
+  font-size: 10px;
+  font-weight: normal;
+  color: var(--parchment);
+  text-shadow: 2px 2px 0 var(--iron);
+  letter-spacing: 0.05em;
+}
+
+.panel-close {
+  background: var(--blood);
+  border: 2px solid var(--iron);
+  border-radius: 0;
+  color: var(--parchment);
+  font-family: var(--font-title);
+  font-size: 10px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.25);
+}
+
+.panel-close:hover {
+  background: #b03a2c;
+  color: #fff;
+}
+
+/* Contenu : parchemin sombre incrusté dans le bois */
+.panel-content,
+.panel-body,
+.bank-content,
+.chat-body {
+  background: #2b1e10;
+  border: 2px solid var(--wood-darker);
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.6);
+  margin: 6px;
+  color: var(--parchment);
+}
+
+.section-header h3,
+.guild-header-info h3 {
+  font-family: var(--font-title);
+  font-size: 9px;
+  font-weight: normal;
+  color: var(--gold);
+  text-shadow: 1px 1px 0 var(--iron);
+}
+
+.slots-used {
+  color: var(--parchment-dim);
+}
+
+/* ============================================
+   EMPLACEMENTS (slots) : cases de pierre
+   ============================================ */
+
+.inventory-slot,
+.bank-slot,
+.skill-slot-inner,
+.assigned-slot {
+  background: var(--stone-texture);
+  border: 3px solid var(--iron);
+  border-radius: 0;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.15),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.inventory-slot:hover,
+.bank-slot:hover {
+  background: var(--stone-texture);
+  border-color: var(--gold);
+  filter: brightness(1.15);
+}
+
+.bank-slot.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-dark), inset 0 0 8px rgba(217, 167, 58, 0.5);
+}
+
+.skill-slot-v2.empty .skill-slot-inner {
+  background: var(--stone-dark);
+  border-color: var(--iron);
+  opacity: 0.8;
+}
+
+.skill-slot-v2.no-mana .skill-slot-inner {
+  border-color: var(--blood);
+}
+
+/* ============================================
+   ONGLETS : planches de bois
+   ============================================ */
+
+.chat-tab,
+.guild-tab,
+.settings-tab,
+.tab-btn,
+.sidebar-item {
+  background: var(--wood-dark);
+  border: 2px solid var(--iron);
+  border-radius: 0;
+  color: var(--parchment-dim);
+  font-family: var(--font-body);
+  text-shadow: 1px 1px 0 var(--iron);
+}
+
+.chat-tab:hover,
+.guild-tab:hover,
+.settings-tab:hover,
+.tab-btn:hover,
+.sidebar-item:hover {
+  background: var(--wood);
+  color: var(--parchment);
+}
+
+.chat-tab.active,
+.guild-tab.active,
+.settings-tab.active,
+.tab-btn.active,
+.sidebar-item.active {
+  background: var(--stone-light);
+  border-color: var(--gold-dark);
+  color: #fff;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================
+   BOUTONS : fer et bois
+   ============================================ */
+
+.ui-btn,
+.game-ui .btn,
+.keybind-btn,
+.btn-deposit-all,
+.btn-create-guild,
+.btn-leave-guild,
+.btn-invite,
+.btn-deposit,
+.btn-reset,
+.btn-save,
+.btn-unlock,
+.btn-assign,
+.btn-unassign {
+  background: var(--stone);
+  border: 2px solid var(--iron);
+  border-radius: 0;
+  color: var(--parchment);
+  font-family: var(--font-body);
+  font-weight: bold;
+  text-shadow: 1px 1px 0 var(--iron);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.25),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.3),
+    0 2px 0 var(--iron);
+}
+
+.ui-btn:hover,
+.game-ui .btn:hover,
+.keybind-btn:hover,
+.btn-deposit-all:hover,
+.btn-create-guild:hover,
+.btn-invite:hover,
+.btn-deposit:hover,
+.btn-reset:hover,
+.btn-save:hover,
+.btn-unlock:hover:not(.disabled),
+.btn-assign:hover {
+  background: var(--stone-light);
+  border-color: var(--gold-dark);
+  color: #fff;
+}
+
+.ui-btn:active,
+.game-ui .btn:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.game-ui .btn-primary,
+.btn-save,
+.btn-create-guild {
+  background: var(--gold);
+  color: var(--wood-darker);
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.game-ui .btn-primary:hover,
+.btn-save:hover,
+.btn-create-guild:hover {
+  background: #e0b04a;
+  color: var(--wood-darker);
+}
+
+.game-ui .btn-danger,
+.ui-btn-logout,
+.btn-leave-guild,
+.btn-unassign {
+  background: var(--blood);
+  color: var(--parchment);
+}
+
+.game-ui .btn-danger:hover,
+.ui-btn-logout:hover,
+.btn-leave-guild:hover,
+.btn-unassign:hover {
+  background: #a03226;
+  border-color: var(--gold-dark);
+}
+
+.game-ui .btn-success {
+  background: #4f7a28;
+  color: var(--parchment);
+}
+
+.game-ui .btn-secondary {
+  color: var(--parchment);
+}
+
+/* ============================================
+   CHAMPS DE SAISIE : encre sur parchemin
+   ============================================ */
+
+.game-ui input[type="text"],
+.game-ui input[type="number"],
+.game-ui textarea,
+.chat-input,
+.invite-input,
+.deposit-input,
+.create-guild-form input {
+  background: #d8c391;
+  border: 2px solid var(--wood-darker);
+  border-radius: 0;
+  color: #2e1b0d;
+  font-family: var(--font-body);
+  box-shadow: inset 2px 2px 6px rgba(70, 45, 15, 0.45);
+}
+
+.game-ui input[type="text"]:focus,
+.game-ui input[type="number"]:focus,
+.game-ui textarea:focus,
+.chat-input:focus,
+.invite-input:focus,
+.deposit-input:focus,
+.create-guild-form input:focus {
+  border-color: var(--gold-dark);
+  background: #e6d3a2;
+}
+
+.game-ui input[type="text"]::placeholder,
+.game-ui textarea::placeholder,
+.chat-input::placeholder {
+  color: #7a6640;
+}
+
+/* ============================================
+   INFOBULLES : écriteau de bois
+   ============================================ */
+
+.item-tooltip,
+.skill-tooltip {
+  background: #2b1e10;
+  border: 3px solid var(--gold-dark);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--iron), 0 8px 20px rgba(0, 0, 0, 0.8);
+  color: var(--parchment);
+  font-family: var(--font-body);
+}
+
+.tooltip-header,
+.tooltip-title {
+  color: var(--gold);
+  text-shadow: 1px 1px 0 var(--iron);
+}
+
+.tooltip-desc,
+.tooltip-type,
+.tooltip-stack {
+  color: var(--parchment-dim);
+}
+
+/* ============================================
+   BARRE DU HAUT, OR, STATUTS, NOTIFICATIONS
+   ============================================ */
+
+.ui-top-bar {
+  background: var(--wood-texture);
+  border-bottom: 4px solid var(--wood-darker);
+  box-shadow: inset 0 -2px 0 var(--wood-light), 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.gold-display {
+  background: #1a1108;
+  border: 2px solid var(--gold-dark);
+  border-radius: 0;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
+}
+
+.gold-amount {
+  font-family: var(--font-title);
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--gold);
+}
+
+.status-bar {
+  background: #1a1108;
+  border: 2px solid var(--iron);
+  border-radius: 0;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.8);
+}
+
+.status-bar .bar-text {
+  font-family: var(--font-title);
+  font-size: 7px;
+  font-weight: normal;
+  color: var(--parchment);
+}
+
+.health-bar .bar-fill {
+  background: var(--blood);
+}
+
+.mana-bar .bar-fill {
+  background: #2a4a8a;
+}
+
+.notification {
+  background: var(--wood-texture);
+  border: 3px solid var(--wood-darker);
+  border-left: 6px solid var(--gold-dark);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px var(--wood-light), 0 6px 14px rgba(0, 0, 0, 0.6);
+  color: var(--parchment);
+  font-family: var(--font-body);
+}
+
+.notification-success { border-left-color: #6f9a3a; }
+.notification-error { border-left-color: var(--blood); }
+
+/* ============================================
+   BARRES DE DÉFILEMENT
+   ============================================ */
+
+.game-ui ::-webkit-scrollbar-track {
+  background: var(--wood-darker);
+  border-radius: 0;
+}
+
+.game-ui ::-webkit-scrollbar-thumb {
+  background: var(--stone);
+  border: 1px solid var(--iron);
+  border-radius: 0;
+}
+
+.game-ui ::-webkit-scrollbar-thumb:hover {
+  background: var(--stone-light);
+}
+
+/* ============================================
+   ÉQUIPEMENT
+   ============================================ */
+
+.equipment-title {
+  font-family: var(--font-title);
+  font-size: 9px;
+  color: var(--gold);
+  text-shadow: 1px 1px 0 var(--iron);
+}
+
+.equipment-slot {
+  background: var(--stone);
+  border: 3px solid var(--iron);
+  border-radius: 0;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.15),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.equipment-slot.has-item:hover {
+  border-color: var(--gold);
+}
+
+.equipment-label {
+  font-family: var(--font-body);
+  color: var(--parchment-dim);
+}
+
+.tooltip-stats-block {
+  border-color: var(--wood);
+}
+
+.tooltip-line {
+  color: var(--parchment-dim);
+}
+
+.tooltip-stat span:last-child {
+  color: #9bd45a;
+}
+
+/* ============================================
+   POLICE PIXEL PARTOUT
+   ============================================ */
+/* Press Start 2P n'est nette qu'aux multiples de 8px : tout le texte de l'UI est en 8px. */
+
+.game-ui,
+.game-ui * {
+  font-family: var(--font-title) !important;
+  font-size: 8px !important;
+  line-height: 1.6;
+  letter-spacing: 0;
+}

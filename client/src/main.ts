@@ -2,6 +2,7 @@ import './style.css';
 
 import { ApiClient } from './api/client';
 import { AppStore } from './state/appStore';
+import { loadPixelFont } from './game/fonts';
 import { CharacterCreationView } from './views/CharacterCreationView';
 import { GameView } from './views/GameView';
 import { LoginView } from './views/LoginView';
@@ -59,4 +60,8 @@ store.subscribe((state) => {
   }
 });
 
-store.bootstrap();
+// Pas de menu contextuel du navigateur : le clic droit sert au jeu
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// La police pixel doit être chargée avant la création des textes Phaser
+void loadPixelFont().then(() => store.bootstrap());

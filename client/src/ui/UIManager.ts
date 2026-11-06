@@ -1,10 +1,10 @@
 // UI Manager - Coordination de tous les composants UI
 // SekaiMMO v2.0
 
-import type { SocketManager } from '../network/SocketManager';
+import type { InventoryItem, SocketManager } from '../network/SocketManager';
 import type { SkillSlot, SkillData } from '../game/types';
 import { SkillBar } from './components/SkillBar';
-import { InventoryPanel } from './components/InventoryPanel';
+import { InventoryPanel, parseItemStats } from './components/InventoryPanel';
 import { SkillsMenu } from './components/SkillsMenu';
 import { ChatPanel } from './components/ChatPanel';
 import { BankPanel } from './components/BankPanel';
@@ -30,6 +30,7 @@ export class UIManager {
   private chatPanel!: ChatPanel;
   private inventoryPanel: InventoryPanel | null = null;
   private equippedWeaponId: number | null = null;
+  private equippedWeaponName: string | null = null;
   private hasReceivedAutoAttackProfile = false;
   private skillsMenu: SkillsMenu | null = null;
   private bankPanel: BankPanel | null = null;
@@ -176,6 +177,8 @@ export class UIManager {
       this.socketManager.on('combat:autoAttackProfile', (profile) => {
         const changed = profile.weaponItemId !== this.equippedWeaponId;
         this.equippedWeaponId = profile.weaponItemId;
+        this.equippedWeaponName = profile.weaponName;
+        this.inventoryPanel?.setEquippedWeapon(profile.weaponItemId, profile.weaponName);
         if (changed && this.hasReceivedAutoAttackProfile) {
           this.showNotification(
             profile.weaponName ? `Arme équipée : ${profile.weaponName}` : 'Arme retirée (mains nues)',
@@ -221,7 +224,7 @@ export class UIManager {
     );
   }
 
-  private updateInventory(data: { id: number; quantity: number; item: { id: number; name: string; description: string | null; type: string; rarity: string } }[]): void {
+  private updateInventory(data: InventoryItem[]): void {
     if (!this.inventoryPanel) return;
 
     const items = data.map((entry) => ({
@@ -233,6 +236,9 @@ export class UIManager {
         rarity: entry.item.rarity,
         stackable: entry.quantity > 1,
         maxStack: 99,
+        stats: parseItemStats(entry.item.stats),
+        requiredRank: entry.item.requiredRank,
+        weaponInfo: entry.item.weaponType ?? undefined,
       },
       quantity: entry.quantity,
     }));
@@ -451,9 +457,9 @@ export class UIManager {
         container: this.modalContainer,
         slots: 40,
         columns: 8,
-        onItemClick: (_slotIndex, item) => {
+        onItemRightClick: (_slotIndex, item) => {
           if (item && item.type === 'WEAPON') {
-            // Cliquer sur l'arme équipée la retire (auto-attaques à mains nues)
+            // Clic droit sur l'arme équipée la retire (auto-attaques à mains nues)
             if (item.id === this.equippedWeaponId) {
               this.socketManager.unequipWeapon();
             } else {
@@ -464,7 +470,14 @@ export class UIManager {
         onItemDrop: (fromSlot, toSlot) => {
           console.log('Item drag:', fromSlot, '->', toSlot);
         },
+        onEquipmentClick: (slot, item) => {
+          // Seule l'arme est gérée côté serveur : un clic droit la retire
+          if (slot === 'MAIN_HAND' && item) {
+            this.socketManager.unequipWeapon();
+          }
+        },
       });
+      this.inventoryPanel.setEquippedWeapon(this.equippedWeaponId, this.equippedWeaponName);
       this.socketManager.getInventory();
     }
     this.closeOtherPanels('inventory');

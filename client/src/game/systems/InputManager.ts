@@ -115,7 +115,7 @@ export class InputManager {
       if (pointer.rightButtonDown()) {
         this.onRightClick(pointer);
       } else if (pointer.leftButtonDown()) {
-        this.onLeftClick(pointer);
+        this.onLeftClick();
       }
     });
 
@@ -195,27 +195,27 @@ export class InputManager {
       type: 'move',
       data: this.state.moveTarget,
     });
+
+    // Clic droit sur un NPC/objet : ouvre son interface (en plus du déplacement)
+    this.state.interactTarget = {
+      x: pointer.worldX,
+      y: pointer.worldY,
+    };
+
+    this.emit({
+      type: 'interact',
+      data: this.state.interactTarget,
+    });
   }
 
   /**
-   * Click gauche - Confirmer le ciblage ou interagir
+   * Click gauche - Confirmer le ciblage d'un skill
    */
-  private onLeftClick(pointer: Phaser.Input.Pointer): void {
+  private onLeftClick(): void {
     if (this.state.targetingSkill) {
       // Confirmer le lancer du skill
       this.castSkillAtMouse(this.state.targetingSkill);
       this.cancelTargeting();
-    } else {
-      // Interaction avec un objet/NPC
-      this.state.interactTarget = {
-        x: pointer.worldX,
-        y: pointer.worldY,
-      };
-
-      this.emit({
-        type: 'interact',
-        data: this.state.interactTarget,
-      });
     }
   }
 

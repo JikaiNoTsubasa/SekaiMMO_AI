@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 
 import type { ApiClient, GameState } from '../api/client';
 import { createSekaiGame } from '../game/createGame';
+import type { MainScene } from '../game/scenes/MainScene';
 import type { AppStore } from '../state/appStore';
 import { SocketManager } from '../network/SocketManager';
 import { UIManager } from '../ui';
@@ -50,16 +51,14 @@ export class GameView {
   update(state: GameState) {
     this.currentState = state;
 
-    // Mettre à jour l'UI avec les nouvelles données
-    if (this.uiManager) {
-      this.uiManager.updateCharacterStatus(
-        state.character.health,
-        1000, // maxHealth - à récupérer du serveur
-        state.character.mana,
-        500, // maxMana - à récupérer du serveur
-        0 // gold - à récupérer du serveur
-      );
-    }
+    // Resynchroniser les valeurs non volatiles avec le serveur (la vie et le mana
+    // courants restent ceux de la scène, qui est la source en temps réel)
+    const scene = this.game?.scene.getScene('MainScene') as MainScene | null;
+    scene?.updateCharacterData({
+      maxHealth: state.character.maxHealth,
+      maxMana: state.character.maxMana,
+      gold: state.character.gold,
+    });
   }
 
   private ensureConnection(token: string, state: GameState) {
@@ -97,6 +96,16 @@ export class GameView {
         position: {
           x: state.character.positionX,
           y: state.character.positionY,
+        },
+        character: {
+          health: state.character.health,
+          maxHealth: state.character.maxHealth,
+          mana: state.character.mana,
+          maxMana: state.character.maxMana,
+          gold: state.character.gold,
+        },
+        onStatusChange: (status) => {
+          this.uiManager?.updateStatusBars(status.health, status.maxHealth, status.mana, status.maxMana, status.gold);
         },
         onReward: async (_payload) => {
           // L'UIManager gère déjà les notifications via socket

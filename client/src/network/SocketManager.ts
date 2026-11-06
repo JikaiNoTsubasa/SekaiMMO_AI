@@ -60,6 +60,9 @@ export interface InventoryItem {
     type: string;
     rarity: string;
     weaponCode: string | null;
+    stats?: unknown; // objet ou JSON en string selon le stockage
+    requiredRank?: string;
+    weaponType?: { name: string; damageType: string; attackSpeed: string; isRanged: boolean } | null;
   };
 }
 

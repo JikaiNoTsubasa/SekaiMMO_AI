@@ -10,7 +10,65 @@ export interface ItemData {
   stackable: boolean;
   maxStack: number;
   icon?: string;
+  stats?: Record<string, number>;
+  requiredRank?: string;
+  weaponInfo?: { name: string; damageType: string; attackSpeed: string; isRanged: boolean };
 }
+
+/** Extrait les stats numériques d'un item (JSON stocké en objet ou en string) */
+export function parseItemStats(raw: unknown): Record<string, number> {
+  let value = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  const result: Record<string, number> = {};
+  for (const [key, v] of Object.entries(value)) {
+    if (typeof v === 'number') result[key] = v;
+  }
+  return result;
+}
+
+// Libellé et format des stats ; pct = affiché en pourcentage
+const STAT_LABELS: Record<string, { label: string; pct?: boolean }> = {
+  physicalAttack: { label: 'Dégâts physiques' },
+  magicalAttack: { label: 'Dégâts magiques' },
+  physicalDefense: { label: 'Défense physique' },
+  magicalDefense: { label: 'Défense magique' },
+  physicalPenetration: { label: 'Pénétration physique' },
+  magicalPenetration: { label: 'Pénétration magique' },
+  critChance: { label: 'Chance de critique', pct: true },
+  critDamage: { label: 'Dégâts critiques', pct: true },
+  attackSpeed: { label: "Vitesse d'attaque" },
+  movementSpeed: { label: 'Vitesse de déplacement' },
+  maxHealth: { label: 'PV max' },
+  maxMana: { label: 'Mana max' },
+  healAmount: { label: 'Soin' },
+  manaAmount: { label: 'Mana rendu' },
+};
+
+const DAMAGE_TYPE_LABELS: Record<string, string> = {
+  PHYSICAL: 'Physique',
+  MAGICAL: 'Magique',
+  PURE: 'Pur',
+};
+
+const ATTACK_SPEED_LABELS: Record<string, string> = {
+  SLOW: 'Lente',
+  NORMAL: 'Normale',
+  FAST: 'Rapide',
+};
+
+const formatStat = (key: string, value: number): string => {
+  const sign = value > 0 ? '+' : '';
+  if (STAT_LABELS[key]?.pct) return `${sign}${Math.round(value * 1000) / 10}%`;
+  return `${sign}${Math.round(value * 100) / 100}`;
+};
 
 export interface InventorySlot {
   item: ItemData | null;
@@ -25,7 +83,33 @@ export interface InventoryPanelConfig {
   onItemRightClick?: (slotIndex: number, item: ItemData | null) => void;
   onItemDrop?: (fromSlot: number, toSlot: number) => void;
   onItemUse?: (slotIndex: number, item: ItemData) => void;
+  onEquipmentClick?: (slot: EquipmentSlotKey, item: ItemData | null) => void;
 }
+
+export type EquipmentSlotKey =
+  | 'HEAD' | 'NECKLACE' | 'CHEST' | 'LEGS' | 'FEET' | 'HANDS'
+  | 'MAIN_HAND' | 'OFF_HAND' | 'RING_1' | 'RING_2';
+
+// Disposition façon "poupée" : null = case vide de mise en page
+const EQUIPMENT_LAYOUT: (EquipmentSlotKey | null)[] = [
+  'NECKLACE', 'HEAD', null,
+  'MAIN_HAND', 'CHEST', 'OFF_HAND',
+  'HANDS', 'LEGS', 'FEET',
+  'RING_1', null, 'RING_2',
+];
+
+const EQUIPMENT_LABELS: Record<EquipmentSlotKey, string> = {
+  HEAD: 'Tête',
+  NECKLACE: 'Collier',
+  CHEST: 'Torse',
+  LEGS: 'Jambes',
+  FEET: 'Pieds',
+  HANDS: 'Mains',
+  MAIN_HAND: 'Arme',
+  OFF_HAND: 'Main g.',
+  RING_1: 'Anneau',
+  RING_2: 'Anneau',
+};
 
 const RARITY_COLORS: Record<string, string> = {
   COMMON: '#aaaaaa',
@@ -43,12 +127,16 @@ export class InventoryPanel {
   private slotElements: HTMLElement[] = [];
   private draggedSlot: number | null = null;
   private isVisible: boolean = false;
+  private equipment: Partial<Record<EquipmentSlotKey, ItemData>> = {};
+  private equipmentElements = new Map<EquipmentSlotKey, HTMLElement>();
+  private equippedWeapon: { id: number; name: string } | null = null;
 
   constructor(config: InventoryPanelConfig) {
     this.config = config;
     this.container = config.container;
     this.element = this.createElement();
     this.initializeSlots();
+    this.initializeEquipment();
     this.container.appendChild(this.element);
   }
 
@@ -64,6 +152,10 @@ export class InventoryPanel {
         <div class="inventory-info">
           <span class="gold-display">Or: <span class="gold-value">0</span></span>
           <span class="slots-display">Slots: <span class="slots-value">0/${this.config.slots}</span></span>
+        </div>
+        <div class="equipment-section">
+          <div class="equipment-title">Équipement</div>
+          <div class="equipment-grid"></div>
         </div>
         <div class="inventory-grid" style="grid-template-columns: repeat(${this.config.columns}, 1fr);"></div>
         <div class="inventory-actions">
@@ -103,6 +195,81 @@ export class InventoryPanel {
       grid.appendChild(slotEl);
       this.slotElements.push(slotEl);
     }
+  }
+
+  private initializeEquipment(): void {
+    const grid = this.element.querySelector('.equipment-grid')!;
+
+    for (const key of EQUIPMENT_LAYOUT) {
+      if (!key) {
+        const spacer = document.createElement('div');
+        spacer.className = 'equipment-spacer';
+        grid.appendChild(spacer);
+        continue;
+      }
+
+      const el = document.createElement('div');
+      el.className = 'equipment-slot';
+      el.dataset.equipSlot = key;
+      el.innerHTML = `
+        <div class="slot-icon"></div>
+        <div class="equipment-label">${EQUIPMENT_LABELS[key]}</div>
+        <div class="slot-rarity-border"></div>
+      `;
+
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.config.onEquipmentClick?.(key, this.equipment[key] ?? null);
+      });
+      el.addEventListener('mouseenter', () => {
+        const item = this.equipment[key];
+        if (item) this.showItemTooltip(item, el);
+      });
+      el.addEventListener('mouseleave', () => this.hideTooltip());
+
+      grid.appendChild(el);
+      this.equipmentElements.set(key, el);
+    }
+  }
+
+  /**
+   * Définit l'arme équipée (seul emplacement géré côté serveur pour l'instant).
+   * Les infos de l'item sont reprises de l'inventaire quand il y figure.
+   */
+  setEquippedWeapon(id: number | null, name: string | null): void {
+    this.equippedWeapon = id !== null ? { id, name: name ?? 'Arme' } : null;
+    this.refreshEquippedWeapon();
+  }
+
+  private refreshEquippedWeapon(): void {
+    if (!this.equippedWeapon) {
+      this.setEquipmentSlot('MAIN_HAND', null);
+      return;
+    }
+    const { id, name } = this.equippedWeapon;
+    const fromInventory = this.slots.find((s) => s.item?.id === id)?.item;
+    this.setEquipmentSlot(
+      'MAIN_HAND',
+      fromInventory ?? { id, name, type: 'WEAPON', rarity: 'COMMON', stackable: false, maxStack: 1 }
+    );
+  }
+
+  setEquipmentSlot(key: EquipmentSlotKey, item: ItemData | null): void {
+    const el = this.equipmentElements.get(key);
+    if (!el) return;
+
+    if (item) this.equipment[key] = item;
+    else delete this.equipment[key];
+
+    const icon = el.querySelector<HTMLElement>('.slot-icon')!;
+    const label = el.querySelector<HTMLElement>('.equipment-label')!;
+    const border = el.querySelector<HTMLElement>('.slot-rarity-border')!;
+
+    el.classList.toggle('has-item', item !== null);
+    label.style.display = item ? 'none' : '';
+    icon.textContent = item ? item.name.substring(0, 2).toUpperCase() : '';
+    icon.style.backgroundColor = item ? this.getTypeColor(item.type) : '';
+    border.style.borderColor = item ? RARITY_COLORS[item.rarity] ?? RARITY_COLORS.COMMON : 'transparent';
   }
 
   private setupSlotEvents(slotEl: HTMLElement, index: number): void {
@@ -208,6 +375,7 @@ export class InventoryPanel {
       this.updateSlotVisuals(i);
     }
     this.updateSlotCount();
+    this.refreshEquippedWeapon();
   }
 
   /**
@@ -323,26 +491,53 @@ export class InventoryPanel {
   }
 
   private showTooltip(index: number): void {
-    const slot = this.slots[index];
-    if (!slot.item) return;
+    const item = this.slots[index].item;
+    if (!item) return;
+    this.showItemTooltip(item, this.slotElements[index]);
+  }
 
+  private showItemTooltip(item: ItemData, anchor: HTMLElement): void {
     const tooltip = this.element.querySelector<HTMLElement>('.item-tooltip')!;
-    const slotEl = this.slotElements[index];
-    const rect = slotEl.getBoundingClientRect();
+    const rect = anchor.getBoundingClientRect();
     const panelRect = this.element.getBoundingClientRect();
 
     tooltip.innerHTML = `
-      <div class="tooltip-header" style="color: ${RARITY_COLORS[slot.item.rarity] ?? '#fff'}">
-        ${slot.item.name}
+      <div class="tooltip-header" style="color: ${RARITY_COLORS[item.rarity] ?? '#fff'}">
+        ${item.name}
       </div>
-      <div class="tooltip-type">${slot.item.type} · ${slot.item.rarity}</div>
-      <div class="tooltip-desc">${slot.item.description ?? ''}</div>
-      ${slot.item.stackable ? `<div class="tooltip-stack">Stack max: ${slot.item.maxStack}</div>` : ''}
+      <div class="tooltip-type">${item.type} · ${item.rarity}</div>
+      ${this.buildItemDetails(item)}
+      <div class="tooltip-desc">${item.description ?? ''}</div>
+      ${item.stackable ? `<div class="tooltip-stack">Stack max: ${item.maxStack}</div>` : ''}
     `;
 
     tooltip.style.display = 'block';
     tooltip.style.left = `${rect.left - panelRect.left + 50}px`;
     tooltip.style.top = `${rect.top - panelRect.top}px`;
+  }
+
+  private buildItemDetails(item: ItemData): string {
+    const lines: string[] = [];
+
+    if (item.weaponInfo) {
+      const w = item.weaponInfo;
+      lines.push(
+        `<div class="tooltip-line"><span>Type</span><span>${w.name}${w.isRanged ? ' (distance)' : ''}</span></div>`,
+        `<div class="tooltip-line"><span>Dégâts</span><span>${DAMAGE_TYPE_LABELS[w.damageType] ?? w.damageType}</span></div>`,
+        `<div class="tooltip-line"><span>Vitesse</span><span>${ATTACK_SPEED_LABELS[w.attackSpeed] ?? w.attackSpeed}</span></div>`
+      );
+    }
+
+    for (const [key, value] of Object.entries(item.stats ?? {})) {
+      const label = STAT_LABELS[key]?.label ?? key;
+      lines.push(`<div class="tooltip-line tooltip-stat"><span>${label}</span><span>${formatStat(key, value)}</span></div>`);
+    }
+
+    if (item.requiredRank) {
+      lines.push(`<div class="tooltip-line"><span>Rang requis</span><span>${item.requiredRank}</span></div>`);
+    }
+
+    return lines.length ? `<div class="tooltip-stats-block">${lines.join('')}</div>` : '';
   }
 
   private hideTooltip(): void {

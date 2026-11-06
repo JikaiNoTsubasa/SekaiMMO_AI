@@ -3,6 +3,7 @@
 // SekaiMMO v2.0
 
 import Phaser from 'phaser';
+import { PIXEL_FONT } from '../fonts';
 import type { DamageType, MagicElement, SkillData } from '../types';
 import { ELEMENT_COLORS, DAMAGE_TYPE_COLORS } from '../types';
 
@@ -55,7 +56,7 @@ export class CombatManager {
     let text = this.damageTextPool.pop();
     if (!text) {
       text = this.scene.add.text(0, 0, '', {
-        fontFamily: 'Arial Black',
+        fontFamily: PIXEL_FONT,
         fontSize: '16px',
         stroke: '#000000',
         strokeThickness: 3,
@@ -107,7 +108,7 @@ export class CombatManager {
     let text = this.damageTextPool.pop();
     if (!text) {
       text = this.scene.add.text(0, 0, '', {
-        fontFamily: 'Arial Black',
+        fontFamily: PIXEL_FONT,
         fontSize: '16px',
         stroke: '#000000',
         strokeThickness: 3,
@@ -355,8 +356,8 @@ export class CombatManager {
   createStatusEffect(x: number, y: number, color: number, isPositive: boolean): void {
     const symbols = isPositive ? '↑' : '↓';
     const text = this.scene.add.text(x, y - 30, symbols, {
-      fontFamily: 'Arial',
-      fontSize: '20px',
+      fontFamily: PIXEL_FONT,
+      fontSize: '16px',
       color: `#${color.toString(16).padStart(6, '0')}`,
     });
     text.setOrigin(0.5);
@@ -414,7 +415,7 @@ export class CombatManager {
   createLevelUpEffect(x: number, y: number): void {
     // Texte
     const text = this.scene.add.text(x, y - 40, 'LEVEL UP!', {
-      fontFamily: 'Arial Black',
+      fontFamily: PIXEL_FONT,
       fontSize: '24px',
       color: '#ffff00',
       stroke: '#000000',

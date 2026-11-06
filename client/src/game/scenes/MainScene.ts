@@ -3,6 +3,7 @@
 // SekaiMMO v2.0
 
 import Phaser from 'phaser';
+import { PIXEL_FONT } from '../fonts';
 import type { Socket } from 'socket.io-client';
 import type {
   CharacterData,
@@ -31,6 +32,17 @@ export interface MainSceneOptions {
   onMapChange?: (mapCode: string) => void;
   onReward?: (payload: { experience: number; gold: number; drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
+  // Stats réelles du personnage (sinon valeurs par défaut) et notification des changements
+  character?: PlayerStatus;
+  onStatusChange?: (status: PlayerStatus) => void;
+}
+
+export interface PlayerStatus {
+  health: number;
+  maxHealth: number;
+  mana: number;
+  maxMana: number;
+  gold: number;
 }
 
 // Données passées à scene.restart() lors d'un changement de map
@@ -44,7 +56,22 @@ interface MapStateEvent {
   map: { id: number; code: string; name: string; width: number; height: number; pvpEnabled: boolean };
   position: { x: number; y: number };
   monsters: MonsterData[];
+  npcs?: NpcData[];
   players: Partial<CharacterData>[];
+}
+
+// PNJ affiché sur la map (l'interaction passe par le clic droit, voir InputManager)
+interface NpcData {
+  id: number;
+  name: string;
+  title: string | null;
+  positionX: number;
+  positionY: number;
+}
+
+interface NpcInstance {
+  sprite: Phaser.GameObjects.Rectangle;
+  nameText: Phaser.GameObjects.Text;
 }
 
 // État d'un autre joueur
@@ -88,6 +115,7 @@ export class MainScene extends Phaser.Scene {
   // Entités
   private otherPlayers: Map<number, OtherPlayer> = new Map();
   private monsters: Map<number, MonsterInstance> = new Map();
+  private npcs: Map<number, NpcInstance> = new Map();
 
   // Marqueur de mouvement
   private moveMarker!: Phaser.GameObjects.Arc;
@@ -134,10 +162,10 @@ export class MainScene extends Phaser.Scene {
       id: options.characterId,
       name: 'Player',
       level: 1,
-      health: 1000,
-      maxHealth: 1000,
-      mana: 500,
-      maxMana: 500,
+      health: options.character?.health ?? 100,
+      maxHealth: options.character?.maxHealth ?? 100,
+      mana: options.character?.mana ?? 50,
+      maxMana: options.character?.maxMana ?? 50,
       positionX: options.initialPosition.x,
       positionY: options.initialPosition.y,
       physicalAttack: 50,
@@ -148,7 +176,7 @@ export class MainScene extends Phaser.Scene {
       attackSpeed: 1,
       critChance: 0.05,
       critDamage: 1.5,
-      gold: 0,
+      gold: options.character?.gold ?? 0,
     };
 
     // Map par défaut
@@ -704,6 +732,9 @@ export class MainScene extends Phaser.Scene {
     for (const monster of state.monsters) {
       this.spawnMonster(monster);
     }
+    for (const npc of state.npcs ?? []) {
+      this.spawnNpc(npc);
+    }
     for (const player of state.players) {
       this.addOtherPlayer(player);
     }
@@ -1003,7 +1034,8 @@ export class MainScene extends Phaser.Scene {
     sprite.setDepth(8);
 
     const nameText = this.add.text(0, 0, data.name ?? 'Player', {
-      fontSize: '12px',
+      fontFamily: PIXEL_FONT,
+      fontSize: '8px',
       color: '#ffffff',
       stroke: '#000000',
       strokeThickness: 2,
@@ -1055,6 +1087,28 @@ export class MainScene extends Phaser.Scene {
     healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth * healthPercent, barHeight);
   }
 
+  private spawnNpc(data: NpcData): void {
+    if (this.npcs.has(data.id)) return;
+
+    // Placeholder en attendant le sprite du PNJ
+    const sprite = this.add.rectangle(data.positionX, data.positionY, 16, 32, 0x4477aa);
+    sprite.setOrigin(0.5, 0.90625);
+    sprite.setDepth(7);
+    sprite.setInteractive({ useHandCursor: true });
+
+    const nameText = this.add.text(data.positionX, data.positionY - 35, data.name, {
+      fontFamily: PIXEL_FONT,
+      fontSize: '8px',
+      color: '#ffe066',
+      stroke: '#000000',
+      strokeThickness: 2,
+    });
+    nameText.setOrigin(0.5);
+    nameText.setDepth(8);
+
+    this.npcs.set(data.id, { sprite, nameText });
+  }
+
   private spawnMonster(data: MonsterData): void {
     if (this.monsters.has(data.spawnId)) return;
 
@@ -1074,7 +1128,8 @@ export class MainScene extends Phaser.Scene {
     });
 
     const nameText = this.add.text(data.positionX, data.positionY - 35, `${data.name} Lv.${data.level}`, {
-      fontSize: '10px',
+      fontFamily: PIXEL_FONT,
+      fontSize: '8px',
       color: '#ff8888',
       stroke: '#000000',
       strokeThickness: 2,
@@ -1144,7 +1199,19 @@ export class MainScene extends Phaser.Scene {
 
   // === Utilitaires ===
 
+  private lastStatusKey = '';
+
+  /** Prévient l'UI quand vie, mana ou or changent */
+  private notifyStatus(): void {
+    const { health, maxHealth, mana, maxMana, gold } = this.characterData;
+    const key = `${health}|${maxHealth}|${mana}|${maxMana}|${gold}`;
+    if (key === this.lastStatusKey) return;
+    this.lastStatusKey = key;
+    this.options.onStatusChange?.({ health, maxHealth, mana, maxMana, gold });
+  }
+
   private updatePlayerBars(): void {
+    this.notifyStatus();
     // Arrondi comme le rendu du sprite (roundPixels) pour rester alignées au pixel
     const x = Math.floor(this.player.x);
     const y = Math.floor(this.player.y);
@@ -1152,8 +1219,8 @@ export class MainScene extends Phaser.Scene {
     // Barre de vie
     this.playerHealthBar.clear();
     const healthPercent = this.characterData.health / this.characterData.maxHealth;
-    const barWidth = 40;
-    const barHeight = 4;
+    const barWidth = 32;
+    const barHeight = 1;
 
     this.playerHealthBar.fillStyle(0x333333);
     this.playerHealthBar.fillRect(x - barWidth / 2, y - 40, barWidth, barHeight);
@@ -1166,10 +1233,10 @@ export class MainScene extends Phaser.Scene {
     const manaPercent = this.characterData.mana / this.characterData.maxMana;
 
     this.playerManaBar.fillStyle(0x333333);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 35, barWidth, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y - 39, barWidth, barHeight);
 
     this.playerManaBar.fillStyle(0x0088ff);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 35, barWidth * manaPercent, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y - 39, barWidth * manaPercent, barHeight);
   }
 
   private broadcastPosition(): void {
@@ -1252,6 +1319,12 @@ export class MainScene extends Phaser.Scene {
       m.healthBar.destroy();
     });
     this.monsters.clear();
+
+    this.npcs.forEach((n) => {
+      n.sprite.destroy();
+      n.nameText.destroy();
+    });
+    this.npcs.clear();
 
     this.inputManager.destroy();
     this.telegraphManager.destroy();

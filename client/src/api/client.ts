@@ -19,7 +19,10 @@ export interface CharacterSummary {
   id: number;
   name: string;
   health: number;
+  maxHealth: number;
   mana: number;
+  maxMana: number;
+  gold: number;
   positionX: number;
   positionY: number;
   physicalDefense: number;

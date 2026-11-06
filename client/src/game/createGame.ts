@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { Socket } from 'socket.io-client';
 
-import { MainScene } from './scenes/MainScene';
+import { MainScene, type PlayerStatus } from './scenes/MainScene';
 import type { SkillSlot } from './types';
 
 interface CreateGameOptions {
@@ -11,6 +11,8 @@ interface CreateGameOptions {
   position: { x: number; y: number };
   onReward?: (payload: { experience: number; drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
+  character?: PlayerStatus;
+  onStatusChange?: (status: PlayerStatus) => void;
 }
 
 // Résolution de référence : le zoom est l'entier qui s'en rapproche le plus
@@ -66,6 +68,8 @@ export const createSekaiGame = (options: CreateGameOptions) => {
         initialPosition: options.position,
         onReward: options.onReward,
         onSkillCast: options.onSkillCast,
+        character: options.character,
+        onStatusChange: options.onStatusChange,
       }),
     ],
   });

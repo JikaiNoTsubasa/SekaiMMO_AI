@@ -1,10 +1,23 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/assets/fonts/PressStart2P-Regular.ttf') format('truetype');
+  font-display: block;
+}
+
 :root {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Press Start 2P', system-ui, sans-serif;
   color: #eef3ff;
   background-color: #0c0f1e;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
 body {

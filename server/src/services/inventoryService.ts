@@ -6,7 +6,7 @@ export const inventoryService = {
   async getInventory(characterId: number) {
     return prisma.inventoryItem.findMany({
       where: { characterId },
-      include: { item: true }
+      include: { item: { include: { weaponType: true } } }
     });
   },
 

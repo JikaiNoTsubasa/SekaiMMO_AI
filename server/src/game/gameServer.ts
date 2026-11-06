@@ -41,6 +41,9 @@ interface ConnectedPlayer {
 const AUTO_ATTACK_RANGE_TOLERANCE = 40;
 const AUTO_ATTACK_TIMING_TOLERANCE = 0.85;
 
+// Distance max joueur ↔ PNJ pour interagir
+const NPC_INTERACT_RANGE = 120;
+
 // Schémas de validation
 const movementSchema = z.object({
   x: z.number(),
@@ -422,6 +425,13 @@ export class GameServer {
           );
 
           if (distance < 50) {
+            // Le joueur doit être à portée du PNJ (on ne peut pas interagir à distance)
+            const playerDistance = Math.hypot(
+              player.positionX - npc.positionX,
+              player.positionY - npc.positionY
+            );
+            if (playerDistance > NPC_INTERACT_RANGE) break;
+
             socket.emit('npc:interact', {
               npcId: npc.id,
               name: npc.name,
@@ -1237,6 +1247,14 @@ export class GameServer {
       element: m.element,
     }));
 
+    const npcs = (await prisma.nPC.findMany({ where: { mapId: player.mapId } })).map((n) => ({
+      id: n.id,
+      name: n.name,
+      title: n.title,
+      positionX: n.positionX,
+      positionY: n.positionY,
+    }));
+
     const otherIds = Array.from(this.connectedPlayers.values())
       .filter((p) => p.mapId === player.mapId && p.characterId !== characterId)
       .map((p) => p.characterId);
@@ -1266,6 +1284,7 @@ export class GameServer {
       },
       position: { x: player.positionX, y: player.positionY },
       monsters,
+      npcs,
       players,
     });
   }
