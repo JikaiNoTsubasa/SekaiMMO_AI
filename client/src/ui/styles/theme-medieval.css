@@ -455,3 +455,36 @@
   line-height: 1.6;
   letter-spacing: 0;
 }
+
+/* ============================================
+   ICÔNES D'ITEMS : pleine case, rareté sur le cadre
+   ============================================ */
+
+/* L'image remplit toute la case : plus de liseré de rareté ni de marge interne */
+.slot-rarity-border {
+  display: none;
+}
+
+.inventory-slot .slot-icon,
+.bank-slot .slot-icon,
+.equipment-slot .slot-icon {
+  inset: 0;
+  border-radius: 0;
+}
+
+/* La rareté colore le cadre existant de la case (même épaisseur qu'avant) */
+.inventory-slot.rarity-uncommon,
+.bank-slot.rarity-uncommon,
+.equipment-slot.rarity-uncommon { border-color: #5fb04a; }
+
+.inventory-slot.rarity-rare,
+.bank-slot.rarity-rare,
+.equipment-slot.rarity-rare { border-color: #3b82d6; }
+
+.inventory-slot.rarity-epic,
+.bank-slot.rarity-epic,
+.equipment-slot.rarity-epic { border-color: #a855f7; }
+
+.inventory-slot.rarity-legendary,
+.bank-slot.rarity-legendary,
+.equipment-slot.rarity-legendary { border-color: #f59e0b; }

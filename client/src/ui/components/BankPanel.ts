@@ -1,6 +1,7 @@
 // Bank Panel - Interface de banque personnelle
 // SekaiMMO v2.0
 
+import { applyItemIcon } from './InventoryPanel';
 import type { ItemData, InventorySlot } from './InventoryPanel';
 
 export interface BankPanelConfig {
@@ -238,18 +239,15 @@ export class BankPanel {
     slotEl.classList.remove('has-item');
 
     if (!slot.item) {
-      iconEl.textContent = '';
-      iconEl.style.backgroundColor = '';
+      applyItemIcon(iconEl, null, '');
       quantityEl.textContent = '';
       return;
     }
 
     slotEl.classList.add('has-item');
 
-    // Icon
-    const initials = slot.item.name.substring(0, 2).toUpperCase();
-    iconEl.textContent = initials;
-    iconEl.style.backgroundColor = this.getTypeColor(slot.item.type);
+    // Icône (image, sinon initiales)
+    applyItemIcon(iconEl, slot.item, this.getTypeColor(slot.item.type));
 
     // Quantity
     if (slot.quantity > 1) {

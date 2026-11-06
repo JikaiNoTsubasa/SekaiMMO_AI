@@ -9,10 +9,44 @@ export interface ItemData {
   rarity: string;
   stackable: boolean;
   maxStack: number;
-  icon?: string;
+  icon?: string; // URL web de l'image (voir resolveItemIcon)
   stats?: Record<string, number>;
   requiredRank?: string;
   weaponInfo?: { name: string; damageType: string; attackSpeed: string; isRanged: boolean };
+}
+
+/**
+ * Convertit l'iconUrl stockée en base en URL web.
+ * La base peut contenir "public/assets/items/..." : Vite sert le dossier public à la racine.
+ */
+export function resolveItemIcon(iconUrl: string | null | undefined): string | undefined {
+  const url = iconUrl?.trim();
+  if (!url) return undefined;
+  if (/^(https?:)?\/\//.test(url)) return url;
+  return '/' + url.replace(/^\/+/, '').replace(/^public\//, '');
+}
+
+/** Affiche l'icône d'un item (image si disponible, sinon initiales sur fond coloré) */
+export function applyItemIcon(iconEl: HTMLElement, item: ItemData | null, fallbackColor: string): void {
+  iconEl.classList.remove('has-image');
+  iconEl.style.backgroundImage = '';
+
+  if (!item) {
+    iconEl.textContent = '';
+    iconEl.style.backgroundColor = '';
+    return;
+  }
+
+  if (item.icon) {
+    iconEl.classList.add('has-image');
+    iconEl.textContent = '';
+    iconEl.style.backgroundColor = 'transparent';
+    iconEl.style.backgroundImage = `url("${item.icon}")`;
+    return;
+  }
+
+  iconEl.textContent = item.name.substring(0, 2).toUpperCase();
+  iconEl.style.backgroundColor = fallbackColor;
 }
 
 /** Extrait les stats numériques d'un item (JSON stocké en objet ou en string) */
@@ -266,9 +300,10 @@ export class InventoryPanel {
     const border = el.querySelector<HTMLElement>('.slot-rarity-border')!;
 
     el.classList.toggle('has-item', item !== null);
+    el.classList.remove('rarity-common', 'rarity-uncommon', 'rarity-rare', 'rarity-epic', 'rarity-legendary');
+    if (item) el.classList.add(`rarity-${item.rarity.toLowerCase()}`);
     label.style.display = item ? 'none' : '';
-    icon.textContent = item ? item.name.substring(0, 2).toUpperCase() : '';
-    icon.style.backgroundColor = item ? this.getTypeColor(item.type) : '';
+    applyItemIcon(icon, item, item ? this.getTypeColor(item.type) : '');
     border.style.borderColor = item ? RARITY_COLORS[item.rarity] ?? RARITY_COLORS.COMMON : 'transparent';
   }
 
@@ -398,8 +433,7 @@ export class InventoryPanel {
     slotEl.classList.remove('has-item', 'rarity-common', 'rarity-uncommon', 'rarity-rare', 'rarity-epic', 'rarity-legendary');
 
     if (!slot.item) {
-      iconEl.textContent = '';
-      iconEl.style.backgroundColor = '';
+      applyItemIcon(iconEl, null, '');
       quantityEl.textContent = '';
       rarityBorder.style.borderColor = 'transparent';
       return;
@@ -407,10 +441,8 @@ export class InventoryPanel {
 
     slotEl.classList.add('has-item');
 
-    // Icon (placeholder avec initiales)
-    const initials = slot.item.name.substring(0, 2).toUpperCase();
-    iconEl.textContent = initials;
-    iconEl.style.backgroundColor = this.getTypeColor(slot.item.type);
+    // Icône (image, sinon initiales)
+    applyItemIcon(iconEl, slot.item, this.getTypeColor(slot.item.type));
 
     // Quantity
     if (slot.quantity > 1) {

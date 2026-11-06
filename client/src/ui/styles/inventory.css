@@ -291,3 +291,11 @@
   color: #7ddc7d;
   font-weight: 700;
 }
+
+/* Icône d'item en image : rendu pixel net */
+.slot-icon.has-image {
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+}

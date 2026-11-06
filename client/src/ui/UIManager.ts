@@ -4,7 +4,7 @@
 import type { InventoryItem, SocketManager } from '../network/SocketManager';
 import type { SkillSlot, SkillData } from '../game/types';
 import { SkillBar } from './components/SkillBar';
-import { InventoryPanel, parseItemStats } from './components/InventoryPanel';
+import { InventoryPanel, parseItemStats, resolveItemIcon } from './components/InventoryPanel';
 import { SkillsMenu } from './components/SkillsMenu';
 import { ChatPanel } from './components/ChatPanel';
 import { BankPanel } from './components/BankPanel';
@@ -238,6 +238,7 @@ export class UIManager {
         rarity: entry.item.rarity,
         stackable: entry.quantity > 1,
         maxStack: 99,
+        icon: resolveItemIcon(entry.item.iconUrl),
         stats: parseItemStats(entry.item.stats),
         requiredRank: entry.item.requiredRank,
         weaponInfo: entry.item.weaponType ?? undefined,

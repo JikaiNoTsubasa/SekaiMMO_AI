@@ -594,10 +594,11 @@ async function main() {
   // -- Armes de départ (Rank E) --
   const starterSword = await prisma.item.upsert({
     where: { name: 'Épée de Recrue' },
-    update: {},
+    update: { iconUrl: 'public/assets/items/weapons/starter_sword.png' },
     create: {
       name: 'Épée de Recrue',
       description: 'Une épée simple pour les débutants.',
+      iconUrl: 'public/assets/items/weapons/starter_sword.png',
       type: 'WEAPON',
       rarity: 'COMMON',
       weaponTypeId: sword.id,
