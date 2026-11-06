@@ -303,25 +303,6 @@ button.secondary:hover {
   min-height: 1.2rem;
 }
 
-.notifications {
-  position: absolute;
-  right: 1.25rem;
-  bottom: 6.5rem;
-  display: grid;
-  gap: 0.5rem;
-  pointer-events: none;
-}
-
-.notification {
-  background: rgba(27, 32, 60, 0.95);
-  border: 1px solid rgba(118, 134, 205, 0.4);
-  padding: 0.75rem 1rem;
-  border-radius: 12px;
-  color: #f1f5ff;
-  font-size: 0.9rem;
-  box-shadow: 0 10px 25px rgba(8, 9, 25, 0.35);
-}
-
 .modal {
   position: absolute;
   inset: 0;
@@ -395,11 +376,6 @@ button.secondary:hover {
   .game-container {
     width: 100%;
     border-radius: 0;
-  }
-
-  .notifications {
-    right: 0.75rem;
-    bottom: 6rem;
   }
 
   .modal {

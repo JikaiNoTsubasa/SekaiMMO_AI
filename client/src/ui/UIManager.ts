@@ -37,7 +37,6 @@ export class UIManager {
   private guildPanel: GuildPanel | null = null;
   private settingsPanel: SettingsPanel | null = null;
   private modalContainer!: HTMLElement;
-  private notificationContainer!: HTMLElement;
 
   // État
   private skillBarData: Map<SkillSlot, SkillData | null> = new Map();
@@ -100,13 +99,11 @@ export class UIManager {
         <div class="skill-bar-container"></div>
       </div>
       <div class="modal-container"></div>
-      <div class="notification-container"></div>
     `;
 
     this.container.appendChild(this.uiContainer);
 
     this.modalContainer = this.uiContainer.querySelector('.modal-container')!;
-    this.notificationContainer = this.uiContainer.querySelector('.notification-container')!;
 
     // Setup button events
     this.setupButtonEvents();
@@ -199,6 +196,11 @@ export class UIManager {
     // Chat messages
     this.unsubscribers.push(
       this.socketManager.on('chat:message', (data) => {
+        // Les messages système du serveur vont dans l'onglet System
+        if (data.isSystem) {
+          this.chatPanel.addSystemMessage(data.content);
+          return;
+        }
         this.chatPanel.addMessage({
           id: Date.now(),
           channel: data.channel,
@@ -580,23 +582,10 @@ export class UIManager {
   }
 
   /**
-   * Affiche une notification
+   * Affiche un message dans l'onglet System du chat
    */
   showNotification(message: string, type: 'info' | 'error' | 'success' = 'info'): void {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    notification.textContent = message;
-    this.notificationContainer.appendChild(notification);
-
-    // Forcer un reflow pour que l'animation fonctionne
-    notification.offsetHeight;
-    notification.classList.add('show');
-
-    setTimeout(() => {
-      notification.classList.remove('show');
-      notification.classList.add('fade-out');
-      setTimeout(() => notification.remove(), 300);
-    }, 3000);
+    this.chatPanel.addSystemMessage(message, type);
   }
 
   /**

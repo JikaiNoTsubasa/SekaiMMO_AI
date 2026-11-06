@@ -132,7 +132,14 @@ export class GameView {
     this.socketManager.on('monster:attack', (data) => {
       if (this.currentState && data.targetId === this.currentState.character.id) {
         // Le joueur est touché - mettre à jour la vie via l'UI
-        this.uiManager?.showNotification(`-${data.damage} dégâts!`, 'error');
+        this.uiManager?.showNotification(`${data.monsterName ?? 'Monster'} dealt ${data.damage} damage`, 'error');
+      }
+    });
+
+    // Dégâts infligés par le joueur
+    this.socketManager.on('combat:damage', (data) => {
+      if (this.currentState && data.attackerId === this.currentState.character.id && data.targetType === 'monster') {
+        this.uiManager?.showNotification(`You dealt ${data.damage} damage`);
       }
     });
 

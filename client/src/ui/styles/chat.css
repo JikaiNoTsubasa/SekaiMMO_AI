@@ -152,6 +152,14 @@
   font-style: italic;
 }
 
+.msg-content.system.level-error {
+  color: #e07060;
+}
+
+.msg-content.system.level-success {
+  color: #8cc860;
+}
+
 /* Channel-specific colors */
 .chat-message.channel-guild .msg-sender {
   color: #80c080;

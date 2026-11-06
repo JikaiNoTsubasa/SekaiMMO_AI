@@ -1,7 +1,8 @@
 // Chat Panel - Interface de chat avec onglets
 // SekaiMMO v2.0
 
-export type ChatChannel = 'local' | 'guild' | 'whisper';
+export type ChatChannel = 'local' | 'guild' | 'whisper' | 'system';
+export type SystemLevel = 'info' | 'error' | 'success';
 
 export interface ChatMessage {
   id: number;
@@ -11,11 +12,12 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isSystem?: boolean;
+  level?: SystemLevel;
 }
 
 export interface ChatPanelConfig {
   container: HTMLElement;
-  onSendMessage?: (channel: ChatChannel, content: string, targetName?: string) => void;
+  onSendMessage?: (channel: Exclude<ChatChannel, 'system'>, content: string, targetName?: string) => void;
   onWhisperClick?: (playerName: string) => void;
   maxMessages?: number;
 }
@@ -50,6 +52,7 @@ export class ChatPanel {
           <button class="chat-tab active" data-channel="local">Local</button>
           <button class="chat-tab" data-channel="guild">Guilde</button>
           <button class="chat-tab" data-channel="whisper">MP</button>
+          <button class="chat-tab" data-channel="system">System</button>
         </div>
         <div class="chat-controls">
           <button class="chat-minimize" aria-label="Minimiser">−</button>
@@ -98,6 +101,7 @@ export class ChatPanel {
     this.messages.set('local', []);
     this.messages.set('guild', []);
     this.messages.set('whisper', []);
+    this.messages.set('system', []);
   }
 
   private switchChannel(channel: ChatChannel): void {
@@ -125,6 +129,7 @@ export class ChatPanel {
       local: 'Parler au chat local...',
       guild: 'Parler au chat de guilde...',
       whisper: this.whisperTarget ? `Message à ${this.whisperTarget}...` : '/w pseudo message',
+      system: 'Canal système (lecture seule)',
     };
     input.placeholder = placeholders[channel];
 
@@ -146,7 +151,7 @@ export class ChatPanel {
       if (msg.isSystem) {
         msgEl.innerHTML = `
           <span class="msg-time">[${time}]</span>
-          <span class="msg-content system">${this.escapeHtml(msg.content)}</span>
+          <span class="msg-content system level-${msg.level ?? 'info'}">${this.escapeHtml(msg.content)}</span>
         `;
       } else {
         msgEl.innerHTML = `
@@ -176,6 +181,9 @@ export class ChatPanel {
 
     if (!content) return;
 
+    // Le canal système est en lecture seule
+    if (this.currentChannel === 'system') return;
+
     // Check for whisper command
     if (content.startsWith('/w ') || content.startsWith('/whisper ')) {
       const parts = content.split(' ');
@@ -193,7 +201,7 @@ export class ChatPanel {
 
     // Send message
     if (this.currentChannel === 'whisper' && !this.whisperTarget) {
-      this.addSystemMessage('Spécifiez un destinataire avec /w pseudo message');
+      this.addSystemMessage('Spécifiez un destinataire avec /w pseudo message', 'error');
       return;
     }
 
@@ -235,7 +243,7 @@ export class ChatPanel {
     }
 
     // Notify if not current channel
-    if (message.channel !== this.currentChannel && !message.isSystem) {
+    if (message.channel !== this.currentChannel) {
       const tabBtn = this.element.querySelector(`.chat-tab[data-channel="${message.channel}"]`);
       tabBtn?.classList.add('has-new');
     }
@@ -247,12 +255,13 @@ export class ChatPanel {
   }
 
   /**
-   * Ajoute un message système
+   * Ajoute un message dans l'onglet System
    */
-  addSystemMessage(content: string, channel?: ChatChannel): void {
+  addSystemMessage(content: string, level: SystemLevel = 'info'): void {
     this.addMessage({
       id: Date.now(),
-      channel: channel ?? this.currentChannel,
+      channel: 'system',
+      level,
       senderName: 'Système',
       senderId: 0,
       content,

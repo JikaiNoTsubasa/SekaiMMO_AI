@@ -927,6 +927,7 @@ export class GameServer {
     });
 
     this.io.to(`map:${player.mapId}`).emit('combat:damage', {
+      attackerId: characterId,
       targetId: monster.spawnId,
       targetType: 'monster',
       damage: actualDamage,
@@ -1045,6 +1046,7 @@ export class GameServer {
 
       // Émettre l'événement de dégâts
       this.io.to(`map:${player.mapId}`).emit('combat:damage', {
+        attackerId: characterId,
         targetId: monster.spawnId,
         targetType: 'monster',
         damage: actualDamage,

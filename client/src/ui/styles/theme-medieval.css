@@ -382,18 +382,6 @@
   background: #2a4a8a;
 }
 
-.notification {
-  background: var(--wood-texture);
-  border: 3px solid var(--wood-darker);
-  border-left: 6px solid var(--gold-dark);
-  border-radius: 0;
-  box-shadow: inset 0 0 0 1px var(--wood-light), 0 6px 14px rgba(0, 0, 0, 0.6);
-  color: var(--parchment);
-  font-family: var(--font-body);
-}
-
-.notification-success { border-left-color: #6f9a3a; }
-.notification-error { border-left-color: var(--blood); }
 
 /* ============================================
    BARRES DE DÉFILEMENT

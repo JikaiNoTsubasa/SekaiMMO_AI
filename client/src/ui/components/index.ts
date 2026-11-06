@@ -11,7 +11,7 @@ export { SkillsMenu } from './SkillsMenu';
 export type { SkillEntry, WeaponProgress, ElementProgress, SkillsMenuConfig } from './SkillsMenu';
 
 export { ChatPanel } from './ChatPanel';
-export type { ChatMessage, ChatChannel, ChatPanelConfig } from './ChatPanel';
+export type { ChatMessage, ChatChannel, SystemLevel, ChatPanelConfig } from './ChatPanel';
 
 export { BankPanel } from './BankPanel';
 export type { BankPanelConfig } from './BankPanel';

@@ -115,6 +115,7 @@ export interface ChatMessage {
 }
 
 export interface CombatDamageEvent {
+  attackerId?: number; // personnage à l'origine des dégâts (absent pour les autres sources)
   targetId: number;
   targetType: 'monster' | 'player';
   damage: number;
@@ -125,6 +126,7 @@ export interface CombatDamageEvent {
 
 export interface MonsterAttackEvent {
   spawnId: number;
+  monsterName?: string;
   targetId: number;
   damage: number;
   damageType: string;

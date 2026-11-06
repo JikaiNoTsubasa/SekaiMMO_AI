@@ -328,6 +328,7 @@ export class MonsterAI {
     // Émettre l'événement d'attaque
     this.io.to(`map:${monster.mapId}`).emit('monster:attack', {
       spawnId: monster.spawnId,
+      monsterName: monster.name,
       targetId,
       damage,
       damageType: isPhysical ? 'PHYSICAL' : 'MAGICAL',
