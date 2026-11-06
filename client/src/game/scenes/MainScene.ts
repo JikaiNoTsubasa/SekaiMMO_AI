@@ -23,6 +23,9 @@ import { CombatManager } from '../systems/CombatManager';
 import { CharacterAnimator } from '../systems/CharacterAnimator';
 import { SekaiMapLoader } from '../systems/SekaiMapLoader';
 
+// Décalage vertical des barres de vie/mana sous les pieds des personnages et monstres
+const BAR_OFFSET_BELOW = 4;
+
 // Options de la scène (simplifiées pour le démarrage)
 export interface MainSceneOptions {
   socket: Socket;
@@ -1081,10 +1084,10 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 4;
 
     healthBar.fillStyle(0x333333);
-    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) + BAR_OFFSET_BELOW, barWidth, barHeight);
 
     healthBar.fillStyle(0x00ff00);
-    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth * healthPercent, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) + BAR_OFFSET_BELOW, barWidth * healthPercent, barHeight);
   }
 
   private spawnNpc(data: NpcData): void {
@@ -1191,10 +1194,10 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 5;
 
     healthBar.fillStyle(0x333333);
-    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) + BAR_OFFSET_BELOW, barWidth, barHeight);
 
     healthBar.fillStyle(healthPercent > 0.3 ? 0xff4444 : 0xff0000);
-    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) - 41, barWidth * healthPercent, barHeight);
+    healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) + BAR_OFFSET_BELOW, barWidth * healthPercent, barHeight);
   }
 
   // === Utilitaires ===
@@ -1223,20 +1226,20 @@ export class MainScene extends Phaser.Scene {
     const barHeight = 1;
 
     this.playerHealthBar.fillStyle(0x333333);
-    this.playerHealthBar.fillRect(x - barWidth / 2, y - 40, barWidth, barHeight);
+    this.playerHealthBar.fillRect(x - barWidth / 2, y + BAR_OFFSET_BELOW, barWidth, barHeight);
 
     this.playerHealthBar.fillStyle(0x00ff00);
-    this.playerHealthBar.fillRect(x - barWidth / 2, y - 40, barWidth * healthPercent, barHeight);
+    this.playerHealthBar.fillRect(x - barWidth / 2, y + BAR_OFFSET_BELOW, barWidth * healthPercent, barHeight);
 
     // Barre de mana
     this.playerManaBar.clear();
     const manaPercent = this.characterData.mana / this.characterData.maxMana;
 
     this.playerManaBar.fillStyle(0x333333);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 39, barWidth, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y + BAR_OFFSET_BELOW + 2, barWidth, barHeight);
 
     this.playerManaBar.fillStyle(0x0088ff);
-    this.playerManaBar.fillRect(x - barWidth / 2, y - 39, barWidth * manaPercent, barHeight);
+    this.playerManaBar.fillRect(x - barWidth / 2, y + BAR_OFFSET_BELOW + 2, barWidth * manaPercent, barHeight);
   }
 
   private broadcastPosition(): void {
