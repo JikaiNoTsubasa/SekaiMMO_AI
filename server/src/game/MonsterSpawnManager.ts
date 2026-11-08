@@ -9,6 +9,7 @@ export interface SpawnedMonster {
   monsterId: number;
   mapId: number;
   name: string;
+  iconUrl: string | null;
   level: number;
   health: number;
   maxHealth: number;
@@ -86,6 +87,7 @@ export class MonsterSpawnManager {
         const monsterData = {
           id: spawn.monster.id,
           name: spawn.monster.name,
+          iconUrl: spawn.monster.iconUrl,
           level: spawn.monster.level,
           health: spawn.monster.health,
           element: spawn.monster.element,
@@ -113,6 +115,7 @@ export class MonsterSpawnManager {
   private spawnMonster(spawnPoint: SpawnPoint, monsterData: {
     id: number;
     name: string;
+    iconUrl: string | null;
     level: number;
     health: number;
     element: string;
@@ -141,6 +144,7 @@ export class MonsterSpawnManager {
       monsterId: monsterData.id,
       mapId: spawnPoint.mapId,
       name: monsterData.name,
+      iconUrl: monsterData.iconUrl,
       level: monsterData.level,
       health: monsterData.health,
       maxHealth: monsterData.health,
@@ -171,6 +175,7 @@ export class MonsterSpawnManager {
       spawnId: monster.spawnId,
       monsterId: monster.monsterId,
       name: monster.name,
+      iconUrl: monster.iconUrl,
       level: monster.level,
       health: monster.health,
       maxHealth: monster.maxHealth,
@@ -284,6 +289,7 @@ export class MonsterSpawnManager {
           spawnId: monster.spawnId,
           monsterId: monster.monsterId,
           name: monster.name,
+          iconUrl: monster.iconUrl,
           level: monster.level,
           health: monster.health,
           maxHealth: monster.maxHealth,

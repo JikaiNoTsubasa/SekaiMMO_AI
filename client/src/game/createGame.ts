@@ -12,6 +12,7 @@ interface CreateGameOptions {
   onReward?: (payload: { drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
   onWrongWeapon?: (skill: SkillData) => void;
+  onDeathChange?: (isDead: boolean) => void;
   character?: PlayerStatus;
   onStatusChange?: (status: PlayerStatus) => void;
 }
@@ -74,6 +75,7 @@ export const createSekaiGame = (options: CreateGameOptions) => {
         onReward: options.onReward,
         onSkillCast: options.onSkillCast,
         onWrongWeapon: options.onWrongWeapon,
+        onDeathChange: options.onDeathChange,
         character: options.character,
         onStatusChange: options.onStatusChange,
       }),

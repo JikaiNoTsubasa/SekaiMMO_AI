@@ -13,6 +13,9 @@ export type { SkillEntry, WeaponProgress, ElementProgress, SkillsMenuConfig } fr
 export { MasterPanel } from './MasterPanel';
 export type { MasterPanelConfig } from './MasterPanel';
 
+export { DeathScreen } from './DeathScreen';
+export type { DeathScreenConfig } from './DeathScreen';
+
 export { ChatPanel } from './ChatPanel';
 export type { ChatMessage, ChatChannel, SystemLevel, ChatPanelConfig } from './ChatPanel';
 

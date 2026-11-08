@@ -21,7 +21,9 @@ import { InputManager, type InputEvent } from '../systems/InputManager';
 import { TelegraphManager } from '../systems/SkillTelegraph';
 import { CombatManager } from '../systems/CombatManager';
 import { CharacterAnimator } from '../systems/CharacterAnimator';
+import { MonsterAnimator } from '../systems/MonsterAnimator';
 import { SekaiMapLoader } from '../systems/SekaiMapLoader';
+import { Tombstone } from '../systems/Tombstone';
 import { isSkillWeaponEquipped } from '../../utils/skillWeapon';
 
 // Décalage vertical des barres de vie/mana sous les pieds des personnages et monstres
@@ -37,6 +39,7 @@ export interface MainSceneOptions {
   onReward?: (payload: { gold: number; drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
   onWrongWeapon?: (skill: SkillData) => void;
+  onDeathChange?: (isDead: boolean) => void;
   // Stats réelles du personnage (sinon valeurs par défaut) et notification des changements
   character?: PlayerStatus;
   onStatusChange?: (status: PlayerStatus) => void;
@@ -57,12 +60,26 @@ interface MainSceneInitData {
 }
 
 // État de la map envoyé par le serveur (réponse à map:requestState)
+type RemotePlayerData = Partial<CharacterData> & { isDead?: boolean };
+
 interface MapStateEvent {
   map: { id: number; code: string; name: string; width: number; height: number; pvpEnabled: boolean };
   position: { x: number; y: number };
+  isDead: boolean;
   monsters: MonsterData[];
   npcs?: NpcData[];
-  players: Partial<CharacterData>[];
+  players: RemotePlayerData[];
+}
+
+interface PlayerRespawnedEvent {
+  characterId: number;
+  mapCode: string;
+  positionX: number;
+  positionY: number;
+  health: number;
+  maxHealth: number;
+  mana: number;
+  maxMana: number;
 }
 
 // PNJ affiché sur la map (l'interaction passe par le clic droit, voir InputManager)
@@ -87,13 +104,15 @@ interface OtherPlayer {
   stopTimer: Phaser.Time.TimerEvent | null; // Retour au repos quand les mises à jour de position cessent
   nameText: Phaser.GameObjects.Text;
   healthBar: Phaser.GameObjects.Graphics;
+  tomb: Phaser.GameObjects.Sprite | null;
   data: Partial<CharacterData>;
 }
 
 // État d'un monstre
 interface MonsterInstance {
   spawnId: number;
-  sprite: Phaser.GameObjects.Rectangle;
+  sprite: Phaser.GameObjects.Sprite;
+  animator: MonsterAnimator;
   nameText: Phaser.GameObjects.Text;
   healthBar: Phaser.GameObjects.Graphics;
   data: MonsterData;
@@ -116,6 +135,8 @@ export class MainScene extends Phaser.Scene {
   private playerMoveAngle: number | null = null; // Direction du déplacement de cette frame
   private playerHealthBar!: Phaser.GameObjects.Graphics;
   private playerManaBar!: Phaser.GameObjects.Graphics;
+  private isDead: boolean = false;
+  private playerTomb: Phaser.GameObjects.Sprite | null = null;
 
   // Entités
   private otherPlayers: Map<number, OtherPlayer> = new Map();
@@ -286,6 +307,8 @@ export class MainScene extends Phaser.Scene {
 
     // Animations des personnages (ou placeholder si le spritesheet est absent)
     CharacterAnimator.setup(this);
+    Tombstone.setup(this);
+    MonsterAnimator.setup(this);
   }
 
   /**
@@ -340,6 +363,8 @@ export class MainScene extends Phaser.Scene {
    */
   private setupInputs(): void {
     this.inputManager.onInput((event: InputEvent) => {
+      if (this.isDead) return;
+
       switch (event.type) {
         case 'move':
           this.handleMoveInput(event.data as { x: number; y: number });
@@ -467,8 +492,18 @@ export class MainScene extends Phaser.Scene {
       this.options.onReward?.(payload);
     });
 
+    // Mort d'un joueur
+    this.listen<{ characterId: number }>('player:died', (payload) => {
+      this.handlePlayerDied(payload.characterId);
+    });
+
+    // Réapparition d'un joueur
+    this.listen<PlayerRespawnedEvent>('player:respawned', (payload) => {
+      this.handlePlayerRespawned(payload);
+    });
+
     // Joueur rejoint la map
-    this.listen<{ character: Partial<CharacterData> }>('player:joined', (payload) => {
+    this.listen<{ character: RemotePlayerData }>('player:joined', (payload) => {
       this.addOtherPlayer(payload.character);
     });
 
@@ -520,6 +555,12 @@ export class MainScene extends Phaser.Scene {
     if (this.telegraphManager.isActive()) {
       const mousePos = this.inputManager.getMousePosition();
       this.telegraphManager.update(mousePos.x, mousePos.y);
+    }
+
+    // Mort : ni déplacement, ni attaque, ni warp
+    if (this.isDead) {
+      this.updateCooldowns(delta);
+      return;
     }
 
     // Auto-attaque
@@ -732,6 +773,7 @@ export class MainScene extends Phaser.Scene {
     this.player.setPosition(state.position.x, state.position.y);
     this.characterData.positionX = state.position.x;
     this.characterData.positionY = state.position.y;
+    this.setLocalPlayerDead(state.isDead);
     this.updatePlayerBars();
 
     for (const monster of state.monsters) {
@@ -779,7 +821,7 @@ export class MainScene extends Phaser.Scene {
    */
   private getMonsterAtPosition(x: number, y: number): MonsterInstance | null {
     for (const monster of this.monsters.values()) {
-      // Détection basée sur le rectangle 16x32
+      // Zone de clic fixe de 24x40 centrée sur les pieds
       const dx = Math.abs(x - monster.sprite.x);
       const dy = Math.abs(y - monster.sprite.y);
       if (dx < 12 && dy < 20) {
@@ -960,6 +1002,7 @@ export class MainScene extends Phaser.Scene {
       if (!monster) return;
       x = monster.sprite.x;
       y = monster.sprite.y;
+      monster.animator.hurt();
     }
 
     // Afficher le texte de dégâts
@@ -984,8 +1027,10 @@ export class MainScene extends Phaser.Scene {
       // Effet de mort
       this.combatManager.createDeathEffect(monster.sprite.x, monster.sprite.y);
 
-      // Supprimer le monstre
-      monster.sprite.destroy();
+      // Supprimer le monstre (le sprite reste le temps de l'animation de mort)
+      this.tweens.killTweensOf(monster.sprite);
+      monster.sprite.disableInteractive();
+      monster.animator.playDeath(() => monster.sprite.destroy());
       monster.nameText.destroy();
       monster.healthBar.destroy();
       this.monsters.delete(payload.spawnId);
@@ -1000,6 +1045,12 @@ export class MainScene extends Phaser.Scene {
   private handleMonsterMoved(payload: { spawnId: number; positionX: number; positionY: number }): void {
     const monster = this.monsters.get(payload.spawnId);
     if (!monster) return;
+
+    if (payload.positionX !== monster.sprite.x || payload.positionY !== monster.sprite.y) {
+      monster.animator.walk(
+        Phaser.Math.Angle.Between(monster.sprite.x, monster.sprite.y, payload.positionX, payload.positionY)
+      );
+    }
 
     // Interpoler vers la nouvelle position
     this.tweens.add({
@@ -1016,8 +1067,15 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handleMonsterAttack(payload: { spawnId: number; targetId: number; damage: number; damageType: string; element: string }): void {
+    // Animation visible par tous les joueurs de la map
+    const attacker = this.monsters.get(payload.spawnId);
+    const target = payload.targetId === this.characterData.id ? this.player : this.otherPlayers.get(payload.targetId)?.sprite;
+    if (attacker && target) {
+      attacker.animator.attack(Phaser.Math.Angle.Between(attacker.sprite.x, attacker.sprite.y, target.x, target.y));
+    }
+
     // Vérifier si c'est le joueur local qui est attaqué
-    if (payload.targetId !== this.characterData.id) return;
+    if (payload.targetId !== this.characterData.id || this.isDead) return;
 
     // Appliquer les dégâts localement
     this.characterData.health = Math.max(0, this.characterData.health - payload.damage);
@@ -1041,7 +1099,79 @@ export class MainScene extends Phaser.Scene {
 
   // === Gestion des entités ===
 
-  private addOtherPlayer(data: Partial<CharacterData>): void {
+  private handlePlayerDied(characterId: number): void {
+    if (characterId === this.characterData.id) {
+      this.setLocalPlayerDead(true);
+      return;
+    }
+
+    const other = this.otherPlayers.get(characterId);
+    if (other) {
+      this.setOtherPlayerDead(other, true);
+    }
+  }
+
+  private handlePlayerRespawned(payload: PlayerRespawnedEvent): void {
+    const { characterId, mapCode, positionX, positionY, health, maxHealth, mana, maxMana } = payload;
+
+    if (characterId !== this.characterData.id) {
+      const other = this.otherPlayers.get(characterId);
+      if (!other) return;
+
+      other.sprite.setPosition(positionX, positionY);
+      other.data.health = health;
+      other.data.maxHealth = maxHealth;
+      this.setOtherPlayerDead(other, false);
+      this.updateOtherPlayerVisuals(other);
+      return;
+    }
+
+    Object.assign(this.characterData, { health, maxHealth, mana, maxMana, positionX, positionY });
+    this.setLocalPlayerDead(false);
+
+    if (mapCode !== this.mapData.code) {
+      this.options.onMapChange?.(mapCode);
+      this.changeMap(mapCode, { x: positionX, y: positionY });
+      return;
+    }
+
+    this.player.setPosition(positionX, positionY);
+    this.updatePlayerBars();
+  }
+
+  /**
+   * Remplace le joueur local par sa tombe (ou l'inverse) et prévient l'UI
+   */
+  private setLocalPlayerDead(isDead: boolean): void {
+    this.isDead = isDead;
+    this.player.setVisible(!isDead);
+    this.playerHealthBar.setVisible(!isDead);
+    this.playerManaBar.setVisible(!isDead);
+
+    this.playerTomb?.destroy();
+    this.playerTomb = isDead ? Tombstone.create(this, this.player.x, this.player.y).setDepth(10) : null;
+
+    if (isDead) {
+      this.characterData.health = 0;
+      this.moveTarget = null;
+      this.moveMarker.setVisible(false);
+      this.stopAutoAttack();
+      this.telegraphManager.deactivate();
+      this.notifyStatus();
+    }
+
+    this.options.onDeathChange?.(isDead);
+  }
+
+  private setOtherPlayerDead(other: OtherPlayer, isDead: boolean): void {
+    other.sprite.setVisible(!isDead);
+    other.healthBar.setVisible(!isDead);
+
+    other.tomb?.destroy();
+    other.tomb = isDead ? Tombstone.create(this, other.sprite.x, other.sprite.y).setDepth(8) : null;
+  }
+
+  private addOtherPlayer(data: RemotePlayerData): void {
     if (!data.id || data.id === this.characterData.id || this.otherPlayers.has(data.id)) return;
 
     const sprite = CharacterAnimator.createSprite(this, data.positionX ?? 0, data.positionY ?? 0, 0xff6b6b);
@@ -1067,10 +1197,14 @@ export class MainScene extends Phaser.Scene {
       stopTimer: null,
       nameText,
       healthBar,
+      tomb: null,
       data,
     };
 
     this.updateOtherPlayerVisuals(other);
+    if (data.isDead) {
+      this.setOtherPlayerDead(other, true);
+    }
     this.otherPlayers.set(data.id, other);
   }
 
@@ -1080,6 +1214,7 @@ export class MainScene extends Phaser.Scene {
       other.sprite.destroy();
       other.nameText.destroy();
       other.healthBar.destroy();
+      other.tomb?.destroy();
       this.otherPlayers.delete(characterId);
     }
   }
@@ -1126,9 +1261,9 @@ export class MainScene extends Phaser.Scene {
   private spawnMonster(data: MonsterData): void {
     if (this.monsters.has(data.spawnId)) return;
 
-    const sprite = this.add.rectangle(data.positionX, data.positionY, 16, 32, 0xaa4444);
-    sprite.setOrigin(0.5, 0.90625); // Centre horizontal, 3px au-dessus du bas
+    const sprite = MonsterAnimator.createSprite(this, data.positionX, data.positionY);
     sprite.setDepth(7);
+    const animator = new MonsterAnimator(sprite, data.iconUrl);
 
     // Rendre le sprite interactif pour le ciblage
     sprite.setInteractive({ useHandCursor: true });
@@ -1157,6 +1292,7 @@ export class MainScene extends Phaser.Scene {
     const monster: MonsterInstance = {
       spawnId: data.spawnId,
       sprite,
+      animator,
       nameText,
       healthBar,
       data,
@@ -1171,7 +1307,7 @@ export class MainScene extends Phaser.Scene {
    */
   private startAutoAttack(spawnId: number): void {
     const monster = this.monsters.get(spawnId);
-    if (!monster) return;
+    if (!monster || this.isDead) return;
 
     this.autoAttackTarget = spawnId;
     this.moveTarget = null; // Annuler le mouvement manuel
@@ -1201,8 +1337,8 @@ export class MainScene extends Phaser.Scene {
 
     healthBar.clear();
     const healthPercent = data.health / data.maxHealth;
-    const barWidth = 50;
-    const barHeight = 5;
+    const barWidth = 32;
+    const barHeight = 2;
 
     healthBar.fillStyle(0x333333);
     healthBar.fillRect(Math.floor(sprite.x) - barWidth / 2, Math.floor(sprite.y) + BAR_OFFSET_BELOW, barWidth, barHeight);
@@ -1324,8 +1460,10 @@ export class MainScene extends Phaser.Scene {
       p.sprite.destroy();
       p.nameText.destroy();
       p.healthBar.destroy();
+      p.tomb?.destroy();
     });
     this.otherPlayers.clear();
+    this.playerTomb = null; // Détruite avec la scène
 
     this.monsters.forEach((m) => {
       m.sprite.destroy();

@@ -33,6 +33,7 @@
 .inventory-panel,
 .bank-panel,
 .master-panel,
+.death-box,
 .guild-panel,
 .settings-panel,
 .skills-menu,
@@ -198,6 +199,7 @@
 .btn-reset,
 .btn-save,
 .btn-buy,
+.btn-respawn,
 .btn-assign,
 .btn-unassign {
   background: var(--stone);
@@ -223,6 +225,7 @@
 .btn-reset:hover,
 .btn-save:hover,
 .btn-buy:hover:not(:disabled),
+.btn-respawn:hover,
 .btn-assign:hover {
   background: var(--stone-light);
   border-color: var(--gold-dark);

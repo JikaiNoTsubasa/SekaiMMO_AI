@@ -92,6 +92,7 @@ export interface MonsterData {
   id: number;
   spawnId: number;
   name: string;
+  iconUrl?: string | null;
   level: number;
   health: number;
   maxHealth: number;

@@ -15,8 +15,8 @@ client/
 ├── public/
 │   ├── assets/
 │   │   ├── sprites/
-│   │   │   ├── characters/   # ✅ Spritesheet des personnages (base_character.png)
-│   │   │   ├── monsters/     # ⏳ Sprites des monstres
+│   │   │   ├── characters/   # ✅ Spritesheet des personnages (base_character.png), ⏳ tombe (tombstone.png)
+│   │   │   ├── monsters/     # Spritesheets des monstres (un fichier par monstre, lié par Monster.iconUrl)
 │   │   │   └── npcs/         # ⏳ Sprites des PNJs
 │   │   ├── tilesets/         # ✅ Images des tilesets des maps
 │   │   ├── items/            # ⏳ Icônes des items
@@ -57,7 +57,7 @@ La position du personnage dans le monde correspond à **ses pieds** :
 - **Vertical** : ligne **y = 29**, soit 3 pixels au-dessus du bas de la frame.
 
 Dessiner le personnage debout sur la ligne y = 29, centré horizontalement, et identique d'une frame à l'autre (sinon le personnage "glisse" pendant l'animation). Les 3 lignes du bas peuvent servir à une ombre.
-Le personnage peut occuper toute la hauteur (29 px au-dessus des pieds). Les barres de vie et de mana s'affichent au-dessus de la frame.
+Le personnage peut occuper toute la hauteur (29 px au-dessus des pieds). Les barres de vie et de mana s'affichent sous les pieds.
 
 ### Animations attendues
 
@@ -108,22 +108,70 @@ Si le fichier est trop petit pour une animation, cette animation est ignorée (a
 
 Le nombre de frames, la vitesse ou l'ordre des lignes se changent dans `CHARACTER_ANIMATIONS` (`characterSprite.ts`). Mettre ce guide à jour en même temps.
 
+### Tombe (personnage mort) ⏳
+
+À 0 PV, le personnage est remplacé par une tombe animée jusqu'à sa réapparition. Elle est visible par tous les joueurs de la map. Les barres du personnage sont masquées pendant ce temps ; le nom des autres joueurs reste affiché.
+
+Aucune image n'est chargée pour l'instant : la tombe est **dessinée par le code** (pierre grise, croix gravée, reflet et deux feux follets), dans `client/src/game/systems/Tombstone.ts`. Pour utiliser un sprite dessiné, il faudra aussi modifier ce fichier pour qu'il charge l'image ; le format ci-dessous est celui de la texture actuelle.
+
+| | |
+|---|---|
+| **Chemin prévu** | `client/public/assets/sprites/characters/tombstone.png` |
+| **Type** | Bande PNG horizontale avec transparence |
+| **Taille d'une frame** | **32x32 pixels** |
+| **Frames** | **6**, une seule direction |
+| **Taille totale** | **192 x 32 pixels** |
+| **Animation** | 6 fps, en boucle |
+| **Ancrage** | Comme les personnages : centre horizontal (x = 16), base de la tombe sur la ligne **y = 29** |
+
 ---
 
-## 2. Sprites des Monstres ⏳
+## 2. Sprites des Monstres
 
-Pas encore chargés : les monstres sont des rectangles rouges de 16x32 ancrés aux pieds (même convention que les personnages).
+Le fichier d'un monstre est lié par la colonne `Monster.iconUrl` en base, comme les icônes des items, par exemple `public/assets/sprites/monsters/peaceful_jelly.png`. Le client le charge à la première apparition du monstre (`MonsterAnimator.ts`). Si `iconUrl` est vide ou si le fichier est introuvable, un rectangle rouge de 16x32 ancré aux pieds est affiché.
 
 ### Monstres (selon seed.ts)
-| Nom | Description | Niveau |
-|-----|-------------|--------|
-| `peaceful_jelly` | Gelée Paisible | 1 |
-| `prairie_wolf` | Loup des Prairies | 3 |
-| `forest_goblin` | Gobelin des Bois | 5 |
 
-### Format suggéré
-- Même structure que les personnages (frames 32x32, 4 directions, ancrage aux pieds) pour réutiliser le même système d'animation.
-- Animations envisagées : `idle`, `walk`, `attack`, `hurt`, `death`.
+| Fichier | Nom en jeu | Niveau | PV | Vitesse | Portée d'attaque | Réapparition | Zones |
+|---------|------------|--------|----|---------|------------------|--------------|-------|
+| `peaceful_jelly.png` ✅ | Gelée Paisible | 1 | 30 | 50 | 30 | 15 s | Village de Départ, Prairie Paisible |
+| `prairie_wolf.png` ⏳ | Loup des Prairies | 3 | 80 | 150 | 40 | 30 s | Prairie Paisible |
+| `forest_goblin.png` ⏳ | Gobelin des Bois | 5 | 120 | 100 | 50 | 45 s | Forêt Sombre |
+
+### Format
+
+Même structure que les personnages.
+
+| | |
+|---|---|
+| **Chemin** | `client/public/assets/sprites/monsters/<fichier>.png` |
+| **Type** | Spritesheet PNG avec transparence (pas de JSON) |
+| **Taille d'une frame** | **32x32 pixels** |
+| **Colonnes** | **8** (frames inutilisées en fin de ligne : laisser transparent) |
+| **Lignes** | **20** (5 animations x 4 directions, dans l'ordre bas, gauche, droite, haut) |
+| **Taille totale** | **256 x 640 pixels** |
+| **Ancrage** | Centre horizontal (x = 16), pieds sur la ligne **y = 29** |
+
+### Animations
+
+Les 5 animations sont jouées par le jeu, et la ligne utilisée suit la direction du monstre. **Une animation non dessinée reste transparente : le monstre disparaît le temps qu'elle dure**, ce qui permet de voir ce qu'il reste à faire. Il suffit ensuite de remplir ses frames dans le PNG.
+
+| Lignes | Animation | Frames | Vitesse | Boucle | Événement |
+|--------|-----------|--------|---------|--------|-----------|
+| 0-3 | `idle` | 4 | 6 fps | oui | Monstre immobile |
+| 4-7 | `walk` | 6 | 10 fps | oui | Déplacement (`monster:moved`) : patrouille, poursuite, retour au spawn |
+| 8-11 | `attack` | 4 | 12 fps | non | Attaque d'un joueur (`monster:attack`), orientée vers lui |
+| 12-15 | `hurt` | 2 | 8 fps | non | Coup reçu (`combat:damage`), sauf pendant une attaque |
+| 16-19 | `death` | 6 | 10 fps | non | Mort du monstre (`monster:defeated`), une seule fois |
+
+Le nombre de frames, la vitesse ou l'ordre des lignes se changent dans `ANIMATIONS` (`MonsterAnimator.ts`). Mettre ce guide à jour en même temps.
+
+### Affichage en jeu
+
+- **Nom et niveau** : centrés 35 px au-dessus des pieds, un monstre de 29 px de haut au maximum ne les recouvre donc pas.
+- **Barre de vie** : 32x2 px, 4 px sous les pieds.
+- **Zone de clic** : 24 px de large et 40 px de haut, centrée sur les pieds.
+- **Mort** : l'animation `death` se joue en plus d'un effet dessiné par le code (`createDeathEffect` dans `CombatManager.ts`), le nom et la barre de vie disparaissent aussitôt. Le monstre réapparaît au bout du délai `respawnTime`.
 
 ---
 
@@ -367,9 +415,10 @@ Le nom du fichier doit être **exactement le `code`** de la map dans la table `G
 ```typescript
 const newMonster = await prisma.monster.upsert({
   where: { name: 'Nom du Monstre' },
-  update: {},
+  update: { iconUrl: 'public/assets/sprites/monsters/nom_du_monstre.png' },
   create: {
     name: 'Nom du Monstre',
+    iconUrl: 'public/assets/sprites/monsters/nom_du_monstre.png',
     level: 5,
     health: 100,
     // ... autres stats
@@ -377,7 +426,8 @@ const newMonster = await prisma.monster.upsert({
 });
 ```
 2. Créer un spawn dans seed.ts
-3. Re-exécuter `npx prisma db seed`
+3. Déposer le spritesheet dans `client/public/assets/sprites/monsters/` (format : section 2)
+4. Re-exécuter `npx prisma db seed` puis redémarrer le serveur (il garde les monstres en mémoire)
 
 ### 3. Ajouter un nouveau skill
 
@@ -447,6 +497,7 @@ const newMap = await prisma.gameMap.upsert({
 | Élément | Placeholder | Défini dans |
 |---------|-------------|-------------|
 | Joueur / autres joueurs | Rectangle bleu / rouge 16x29 dans une frame 32x32 (si `base_character.png` absent) | `client/src/game/systems/CharacterAnimator.ts` |
-| Monstres | Rectangle rouge 16x32 | `client/src/game/scenes/MainScene.ts` (`spawnMonster`) |
+| Tombe (personnage mort) | Texture animée dessinée par le code, 6 frames 32x32 | `client/src/game/systems/Tombstone.ts` |
+| Monstres | Rectangle rouge 16x32 dans une frame 32x32 (si `iconUrl` vide ou fichier introuvable) | `client/src/game/systems/MonsterAnimator.ts` |
 | Map | Grille procédurale (si le fichier `.sm` est absent) | `client/src/game/systems/SekaiMapLoader.ts` |
 | Effets de combat | Formes colorées | `client/src/game/systems/CombatManager.ts` |

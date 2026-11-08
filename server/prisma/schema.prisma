@@ -151,9 +151,15 @@ model Character {
 
   // Position dans le monde
   currentMapId Int?
-  currentMap   GameMap? @relation(fields: [currentMapId], references: [id])
+  currentMap   GameMap? @relation("CurrentMap", fields: [currentMapId], references: [id])
   positionX    Float    @default(100)
   positionY    Float    @default(100)
+
+  // Point de réapparition après la mort (null : spawn de base)
+  respawnMapId Int?
+  respawnMap   GameMap? @relation("RespawnMap", fields: [respawnMapId], references: [id], onDelete: SetNull)
+  respawnX     Float?
+  respawnY     Float?
 
   // Stats de base
   level             Int   @default(1)
@@ -544,7 +550,8 @@ model GameMap {
   updatedAt DateTime @updatedAt
 
   // Relations
-  characters Character[]
+  characters Character[] @relation("CurrentMap")
+  respawningCharacters Character[] @relation("RespawnMap")
   spawns     MonsterSpawn[]
   npcs       NPC[]
 }
@@ -595,6 +602,9 @@ model NPC {
 
   isMerchant Boolean @default(false)
   isBanker   Boolean @default(false)
+
+  // Fontaine ou équivalent : interagir enregistre le point de réapparition
+  isRespawnPoint Boolean @default(false)
 
   // Items vendus (si marchand)
   shopItems Json @default("[]") // [{ "itemId": 1, "price": 100 }]

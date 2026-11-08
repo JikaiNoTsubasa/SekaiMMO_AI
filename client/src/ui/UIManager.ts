@@ -5,9 +5,11 @@ import type { InventoryItem, SocketManager } from '../network/SocketManager';
 import type { SkillSlot, SkillData, WeaponCode, MagicElement } from '../game/types';
 import { getWrongWeaponMessage, isSkillWeaponEquipped } from '../utils/skillWeapon';
 import { SkillBar } from './components/SkillBar';
-import { InventoryPanel, parseItemStats, resolveItemIcon } from './components/InventoryPanel';
+import { InventoryPanel, parseItemStats } from './components/InventoryPanel';
+import { resolveAssetUrl } from '../utils/assetUrl';
 import { SkillsMenu } from './components/SkillsMenu';
 import { MasterPanel } from './components/MasterPanel';
+import { DeathScreen } from './components/DeathScreen';
 import { ChatPanel } from './components/ChatPanel';
 import { BankPanel } from './components/BankPanel';
 import { GuildPanel } from './components/GuildPanel';
@@ -42,6 +44,7 @@ export class UIManager {
   private guildPanel: GuildPanel | null = null;
   private settingsPanel: SettingsPanel | null = null;
   private modalContainer!: HTMLElement;
+  private deathScreen!: DeathScreen;
 
   // État
   private skillBarData: Map<SkillSlot, SkillData | null> = new Map();
@@ -137,6 +140,11 @@ export class UIManager {
   }
 
   private initializeComponents(): void {
+    this.deathScreen = new DeathScreen({
+      container: this.uiContainer,
+      onRespawn: () => this.socketManager.respawn(),
+    });
+
     // Skill bar
     const skillBarContainer = this.uiContainer.querySelector('.skill-bar-container')!;
     this.skillBar = new SkillBar({
@@ -290,7 +298,7 @@ export class UIManager {
         rarity: entry.item.rarity,
         stackable: entry.quantity > 1,
         maxStack: 99,
-        icon: resolveItemIcon(entry.item.iconUrl),
+        icon: resolveAssetUrl(entry.item.iconUrl),
         stats: parseItemStats(entry.item.stats),
         requiredRank: entry.item.requiredRank,
         weaponInfo: entry.item.weaponType ?? undefined,
@@ -642,9 +650,25 @@ export class UIManager {
   }
 
   /**
+   * Affiche ou retire le message de mort (ferme les panneaux et le chat en cours de saisie)
+   */
+  setDeathScreenVisible(visible: boolean): void {
+    if (visible) {
+      this.closeAllModals();
+      (document.activeElement as HTMLElement | null)?.blur();
+    }
+    this.deathScreen.setVisible(visible);
+  }
+
+  /**
    * Gère les raccourcis clavier
    */
   handleKeyDown(event: KeyboardEvent): boolean {
+    // Aucun raccourci tant que le message de mort est affiché
+    if (this.deathScreen.getIsVisible()) {
+      return true;
+    }
+
     // Ignorer si on est dans un champ de texte
     if (
       event.target instanceof HTMLInputElement ||
@@ -696,6 +720,7 @@ export class UIManager {
     this.unsubscribers.forEach((unsub) => unsub());
     this.unsubscribers = [];
 
+    this.deathScreen.destroy();
     this.skillBar.destroy();
     this.chatPanel.destroy();
     this.inventoryPanel?.destroy();

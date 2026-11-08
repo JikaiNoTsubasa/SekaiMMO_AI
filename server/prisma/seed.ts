@@ -831,10 +831,11 @@ async function main() {
 
   const peacefulJelly = await prisma.monster.upsert({
     where: { name: 'Gelée Paisible' },
-    update: {},
+    update: { iconUrl: 'public/assets/sprites/monsters/peaceful_jelly.png' },
     create: {
       name: 'Gelée Paisible',
       description: 'Une gelée inoffensive qui rebondit tranquillement.',
+      iconUrl: 'public/assets/sprites/monsters/peaceful_jelly.png',
       level: 1,
       health: 30,
       physicalAttack: 3,

@@ -12,6 +12,7 @@ import { characterService } from '../services/characterService';
 import { combatService, type AutoAttackProfile } from '../services/combatService';
 import { ELEMENT_XP_LABELS, WEAPON_XP_LABELS, progressionService } from '../services/progressionService';
 import { masterService } from '../services/masterService';
+import { respawnService } from '../services/respawnService';
 import { inventoryService } from '../services/inventoryService';
 import { skillService } from '../services/skillService';
 import { guildService } from '../services/guildService';
@@ -37,6 +38,7 @@ interface ConnectedPlayer {
   autoAttack: AutoAttackProfile;
   lastAutoAttackAt: number;
   isChangingMap: boolean;
+  isDead: boolean;
 }
 
 // Marge de tolérance (latence / désync de position) pour les auto-attaques
@@ -147,7 +149,7 @@ export class GameServer {
   constructor(private readonly io: Server) {
     this.spawnManager = new MonsterSpawnManager(io);
     this.monsterAI = new MonsterAI(io, this.spawnManager, (characterId, damage) => {
-      combatService.applyDamageToCharacter(characterId, damage).catch((error) => {
+      this.handlePlayerHit(characterId, damage).catch((error) => {
         console.error('[monster:attack]', error);
       });
     });
@@ -318,6 +320,8 @@ export class GameServer {
 
     // Enregistrer le joueur
     const autoAttack = await combatService.getAutoAttackProfile(characterId);
+    // À la connexion, une vie à 0 enregistrée signifie que le personnage est toujours mort
+    const isDead = oldPlayer?.isDead ?? character.health <= 0;
     this.connectedPlayers.set(characterId, {
       socketId: socket.id,
       characterId,
@@ -328,11 +332,14 @@ export class GameServer {
       autoAttack,
       lastAutoAttackAt: oldPlayer?.lastAutoAttackAt ?? 0,
       isChangingMap: oldPlayer?.isChangingMap ?? false,
+      isDead,
     });
     socket.emit('combat:autoAttackProfile', autoAttack);
 
-    // Mettre à jour la position dans l'AI
-    this.monsterAI.updatePlayerPosition(characterId, mapId, character.positionX, character.positionY);
+    // Mettre à jour la position dans l'AI (les monstres ignorent les morts)
+    if (!isDead) {
+      this.monsterAI.updatePlayerPosition(characterId, mapId, character.positionX, character.positionY);
+    }
 
     // Notifier les autres joueurs
     socket.to(`map:${mapId}`).emit('player:joined', {
@@ -343,6 +350,7 @@ export class GameServer {
         maxHealth: character.maxHealth,
         positionX: character.positionX,
         positionY: character.positionY,
+        isDead,
       },
     });
   }
@@ -358,7 +366,7 @@ export class GameServer {
       try {
         const data = movementSchema.parse(payload);
         const player = this.connectedPlayers.get(characterId);
-        if (!player) return;
+        if (!player || player.isDead) return;
 
         player.positionX = data.x;
         player.positionY = data.y;
@@ -395,6 +403,15 @@ export class GameServer {
       }
     });
 
+    // Réapparition après la mort
+    socket.on('player:respawn', async () => {
+      try {
+        await this.handleRespawn(socket, characterId);
+      } catch (error) {
+        console.error('[player:respawn]', error);
+      }
+    });
+
     // Changement de map
     socket.on('map:changeRequest', async (payload) => {
       try {
@@ -428,7 +445,7 @@ export class GameServer {
     socket.on('interact:check', async (payload) => {
       try {
         const player = this.connectedPlayers.get(characterId);
-        if (!player) return;
+        if (!player || player.isDead) return;
 
         // Vérifier les NPCs à proximité
         const npcs = await prisma.nPC.findMany({
@@ -447,6 +464,12 @@ export class GameServer {
               player.positionY - npc.positionY
             );
             if (playerDistance > NPC_INTERACT_RANGE) break;
+
+            if (npc.isRespawnPoint) {
+              await respawnService.setRespawnPoint(characterId, npc.mapId, npc.positionX, npc.positionY);
+              this.sendSystemMessage(socket, `Point de réapparition enregistré : ${npc.name}`, 'success');
+              break;
+            }
 
             socket.emit('npc:interact', {
               npcId: npc.id,
@@ -916,7 +939,7 @@ export class GameServer {
    */
   private async handleAutoAttack(socket: Socket, characterId: number, targetId: number): Promise<void> {
     const player = this.connectedPlayers.get(characterId);
-    if (!player) return;
+    if (!player || player.isDead) return;
 
     const profile = player.autoAttack;
 
@@ -1082,7 +1105,7 @@ export class GameServer {
     data: { skillId: number; slot: string; targetX: number; targetY: number }
   ): Promise<void> {
     const player = this.connectedPlayers.get(characterId);
-    if (!player) return;
+    if (!player || player.isDead) return;
 
     // Récupérer le skill, le personnage et le déblocage
     const [skill, character, characterSkill] = await Promise.all([
@@ -1234,6 +1257,74 @@ export class GameServer {
   }
 
   /**
+   * Enregistre les dégâts d'un monstre sur un joueur et détecte sa mort
+   */
+  private async handlePlayerHit(characterId: number, damage: number): Promise<void> {
+    if (this.connectedPlayers.get(characterId)?.isDead) return;
+
+    const { isDead } = await combatService.applyDamageToCharacter(characterId, damage);
+    if (isDead) {
+      this.handlePlayerDeath(characterId);
+    }
+  }
+
+  /**
+   * Passe un joueur à l'état mort : les monstres l'ignorent et il attend sa réapparition
+   */
+  private handlePlayerDeath(characterId: number): void {
+    const player = this.connectedPlayers.get(characterId);
+    if (!player || player.isDead) return;
+
+    player.isDead = true;
+    this.monsterAI.removePlayer(characterId);
+
+    this.io.to(`map:${player.mapId}`).emit('player:died', { characterId });
+  }
+
+  /**
+   * Fait réapparaître un joueur mort à son point de réapparition
+   */
+  private async handleRespawn(socket: Socket, characterId: number): Promise<void> {
+    const player = this.connectedPlayers.get(characterId);
+    if (!player || !player.isDead || player.isChangingMap) return;
+
+    player.isChangingMap = true;
+    try {
+      const { point, ...vitals } = await respawnService.respawnCharacter(characterId);
+
+      player.isDead = false;
+
+      // joinMap lit la position dans socket.data.character
+      socket.data.character = {
+        ...socket.data.character,
+        ...vitals,
+        currentMapId: point.mapId,
+        positionX: point.x,
+        positionY: point.y,
+      };
+
+      if (point.mapId !== player.mapId) {
+        await this.joinMap(socket, point.mapId);
+      } else {
+        player.positionX = point.x;
+        player.positionY = point.y;
+        this.monsterAI.updatePlayerPosition(characterId, point.mapId, point.x, point.y);
+      }
+
+      this.io.to(`map:${point.mapId}`).emit('player:respawned', {
+        characterId,
+        mapCode: point.mapCode,
+        positionX: point.x,
+        positionY: point.y,
+        ...vitals,
+      });
+    } finally {
+      const current = this.connectedPlayers.get(characterId);
+      if (current) current.isChangingMap = false;
+    }
+  }
+
+  /**
    * Gère la mort d'un monstre
    */
   private async handleMonsterKill(
@@ -1266,6 +1357,11 @@ export class GameServer {
       gold: rewards.gold,
       drops: rewards.drops,
     });
+
+    if (rewards.drops.length > 0) {
+      const loot = rewards.drops.map((drop) => `${drop.itemName} x${drop.quantity}`).join(', ');
+      this.sendSystemMessage(socket, `Butin : ${loot}`, 'success');
+    }
   }
 
   /**
@@ -1327,7 +1423,7 @@ export class GameServer {
     targetMapCode: string
   ): Promise<void> {
     const player = this.connectedPlayers.get(characterId);
-    if (!player || player.isChangingMap) return;
+    if (!player || player.isChangingMap || player.isDead) return;
 
     player.isChangingMap = true;
     try {
@@ -1403,6 +1499,7 @@ export class GameServer {
       spawnId: m.spawnId,
       monsterId: m.monsterId,
       name: m.name,
+      iconUrl: m.iconUrl,
       level: m.level,
       health: m.health,
       maxHealth: m.maxHealth,
@@ -1434,6 +1531,7 @@ export class GameServer {
         ...c,
         positionX: connected?.positionX ?? 0,
         positionY: connected?.positionY ?? 0,
+        isDead: connected?.isDead ?? false,
       };
     });
 
@@ -1447,6 +1545,7 @@ export class GameServer {
         pvpEnabled: map.pvpEnabled,
       },
       position: { x: player.positionX, y: player.positionY },
+      isDead: player.isDead,
       monsters,
       npcs,
       players,

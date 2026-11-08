@@ -9,6 +9,7 @@ export interface MonsterData {
   spawnId: number;
   monsterId: number;
   name: string;
+  iconUrl?: string | null;
   level: number;
   health: number;
   maxHealth: number;
@@ -431,6 +432,10 @@ export class SocketManager {
   }
 
   // Skills
+  respawn(): void {
+    this.socket?.emit('player:respawn');
+  }
+
   castSkill(skillId: number, slot: string, targetX: number, targetY: number): void {
     this.socket?.emit('skill:cast', { skillId, slot, targetX, targetY });
   }

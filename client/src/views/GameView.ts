@@ -122,6 +122,9 @@ export class GameView {
         onWrongWeapon: (skill) => {
           this.uiManager?.showNotification(getWrongWeaponMessage(skill), 'error');
         },
+        onDeathChange: (isDead) => {
+          this.uiManager?.setDeathScreenVisible(isDead);
+        },
       });
     }
 

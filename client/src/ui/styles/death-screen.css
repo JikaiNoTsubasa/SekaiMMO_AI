@@ -1,0 +1,53 @@
+/* Death Screen - Message de mort bloquant */
+
+.death-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+.death-screen.visible {
+  display: flex;
+}
+
+.death-box {
+  width: 320px;
+  padding: 1.5rem;
+  background: rgba(15, 18, 35, 0.98);
+  border: 1px solid rgba(180, 80, 80, 0.6);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.death-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.4rem;
+  color: #e07060;
+}
+
+.death-text {
+  margin: 0 0 1.2rem;
+  font-size: 0.9rem;
+  color: #a0b0d0;
+}
+
+.btn-respawn {
+  padding: 0.6rem 1.4rem;
+  background: rgba(130, 50, 50, 0.85);
+  border: 1px solid rgba(180, 80, 80, 0.6);
+  border-radius: 6px;
+  color: #f0d0d0;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-respawn:hover {
+  background: rgba(155, 60, 60, 0.95);
+}

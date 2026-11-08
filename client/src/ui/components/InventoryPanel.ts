@@ -9,21 +9,10 @@ export interface ItemData {
   rarity: string;
   stackable: boolean;
   maxStack: number;
-  icon?: string; // URL web de l'image (voir resolveItemIcon)
+  icon?: string; // URL web de l'image (voir resolveAssetUrl)
   stats?: Record<string, number>;
   requiredRank?: string;
   weaponInfo?: { name: string; damageType: string; attackSpeed: string; isRanged: boolean };
-}
-
-/**
- * Convertit l'iconUrl stockée en base en URL web.
- * La base peut contenir "public/assets/items/..." : Vite sert le dossier public à la racine.
- */
-export function resolveItemIcon(iconUrl: string | null | undefined): string | undefined {
-  const url = iconUrl?.trim();
-  if (!url) return undefined;
-  if (/^(https?:)?\/\//.test(url)) return url;
-  return '/' + url.replace(/^\/+/, '').replace(/^public\//, '');
 }
 
 /** Affiche l'icône d'un item (image si disponible, sinon initiales sur fond coloré) */

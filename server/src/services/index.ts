@@ -21,6 +21,9 @@ export type { SkillRequirements, LearnSkillResult } from './skillService';
 export { masterService } from './masterService';
 export type { MasterOffer } from './masterService';
 
+export { respawnService } from './respawnService';
+export type { RespawnPoint } from './respawnService';
+
 export { guildService } from './guildService';
 
 export { chatService } from './chatService';
