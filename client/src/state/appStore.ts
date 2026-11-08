@@ -145,11 +145,6 @@ export class AppStore {
     });
   }
 
-  async unlockSkill(skillId: number) {
-    await this.api.unlockSkill(skillId);
-    await this.refreshSkills();
-  }
-
   logout() {
     this.api.clearToken();
     localStorage.removeItem('sekai_token');

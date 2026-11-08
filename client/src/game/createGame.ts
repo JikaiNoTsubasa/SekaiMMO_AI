@@ -2,15 +2,16 @@ import Phaser from 'phaser';
 import type { Socket } from 'socket.io-client';
 
 import { MainScene, type PlayerStatus } from './scenes/MainScene';
-import type { SkillSlot } from './types';
+import type { SkillData, SkillSlot } from './types';
 
 interface CreateGameOptions {
   container: HTMLElement;
   socket: Socket;
   characterId: number;
   position: { x: number; y: number };
-  onReward?: (payload: { experience: number; drops: { itemId: number; quantity: number }[] }) => void;
+  onReward?: (payload: { drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
+  onWrongWeapon?: (skill: SkillData) => void;
   character?: PlayerStatus;
   onStatusChange?: (status: PlayerStatus) => void;
 }
@@ -25,14 +26,18 @@ const BASE_HEIGHT = 540;
  * Le zoom est entier en pixels physiques : divisé par devicePixelRatio pour Phaser,
  * qui l'applique en pixels CSS (mise à l'échelle Windows 125 %, 150 %...).
  */
+const ceilToEven = (value: number) => Math.ceil(value / 2) * 2;
+
 const computeViewport = (container: HTMLElement) => {
   const dpr = window.devicePixelRatio || 1;
   const deviceWidth = Math.max(1, Math.round(container.clientWidth * dpr));
   const deviceHeight = Math.max(1, Math.round(container.clientHeight * dpr));
   const zoom = Math.max(1, Math.round(Math.min(deviceWidth / BASE_WIDTH, deviceHeight / BASE_HEIGHT)));
   return {
-    width: Math.ceil(deviceWidth / zoom),
-    height: Math.ceil(deviceHeight / zoom),
+    // Taille paire : avec une taille impaire, le centre de la caméra tombe sur un demi-pixel
+    // et le joueur et ses barres tremblent d'un pixel pendant la marche
+    width: ceilToEven(deviceWidth / zoom),
+    height: ceilToEven(deviceHeight / zoom),
     zoom: zoom / dpr,
   };
 };
@@ -68,6 +73,7 @@ export const createSekaiGame = (options: CreateGameOptions) => {
         initialPosition: options.position,
         onReward: options.onReward,
         onSkillCast: options.onSkillCast,
+        onWrongWeapon: options.onWrongWeapon,
         character: options.character,
         onStatusChange: options.onStatusChange,
       }),

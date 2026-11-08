@@ -36,7 +36,8 @@ export class MonsterAI {
 
   constructor(
     private readonly io: Server,
-    private readonly spawnManager: MonsterSpawnManager
+    private readonly spawnManager: MonsterSpawnManager,
+    private readonly onPlayerHit: (characterId: number, damage: number) => void
   ) {}
 
   /**
@@ -324,6 +325,8 @@ export class MonsterAI {
     // Variation des dégâts (±15%)
     const variance = 0.85 + Math.random() * 0.3;
     const damage = Math.round(baseDamage * variance);
+
+    this.onPlayerHit(targetId, damage);
 
     // Émettre l'événement d'attaque
     this.io.to(`map:${monster.mapId}`).emit('monster:attack', {

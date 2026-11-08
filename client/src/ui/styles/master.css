@@ -1,0 +1,76 @@
+/* Master Panel - Boutique des maîtres d'arme et d'élément */
+
+.master-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  max-height: 80vh;
+  background: rgba(15, 18, 35, 0.98);
+  border: 1px solid rgba(90, 110, 180, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  z-index: 150;
+  display: none;
+  flex-direction: column;
+  pointer-events: auto;
+}
+
+.master-panel.visible {
+  display: flex;
+}
+
+.master-content {
+  padding: 0.8rem;
+  overflow-y: auto;
+}
+
+.master-summary {
+  padding: 0.8rem;
+  margin-bottom: 0.8rem;
+  background: rgba(25, 30, 55, 0.7);
+  border: 1px solid rgba(70, 85, 130, 0.4);
+  border-radius: 8px;
+  color: #a0b0d0;
+  font-size: 0.9rem;
+}
+
+.master-balance,
+.master-rank {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.master-rank {
+  margin-top: 0.6rem;
+}
+
+.btn-buy {
+  padding: 0.4rem 0.8rem;
+  background: rgba(50, 70, 130, 0.8);
+  border: 1px solid rgba(80, 110, 180, 0.5);
+  border-radius: 6px;
+  color: #c0d0ff;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-buy:hover:not(:disabled) {
+  background: rgba(60, 85, 150, 0.9);
+  border-color: rgba(100, 130, 200, 0.6);
+}
+
+.btn-buy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.master-missing {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #d09090;
+}

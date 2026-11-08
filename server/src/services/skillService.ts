@@ -1,10 +1,10 @@
 // Skill Service - Gestion des compétences
 // Apprentissage, prérequis, assignation
 
-import type { Rank, WeaponCode, MagicElement, Prisma } from '../generated/prisma';
+import type { WeaponCode, MagicElement, Prisma } from '../generated/prisma';
 import { prisma } from '../config/prisma';
 import { HttpError } from '../middleware/errorHandler';
-import { progressionService } from './progressionService';
+import { ELEMENT_XP_LABELS, progressionService } from './progressionService';
 
 const SKILL_SLOTS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F'] as const;
 type SkillSlot = (typeof SKILL_SLOTS)[number];
@@ -12,9 +12,7 @@ const SKILL_SLOT_SET = new Set(SKILL_SLOTS);
 
 export interface SkillRequirements {
   meetsRankRequirement: boolean;
-  meetsWeaponXpRequirement: boolean;
-  meetsElementXpRequirement: boolean;
-  hasEnoughGold: boolean;
+  hasEnoughXp: boolean;
   canLearn: boolean;
   missingRequirements: string[];
 }
@@ -25,8 +23,19 @@ export interface LearnSkillResult {
     id: number;
     name: string;
   };
-  goldSpent: number;
+  xpSpent: number;
   message?: string;
+}
+
+/**
+ * Prix en XP d'un skill : XP d'élément pour un skill élémentaire, XP d'arme sinon
+ */
+export function getSkillXpCost(skill: {
+  element: MagicElement;
+  requiredWeaponXp: number;
+  requiredElementXp: number;
+}): number {
+  return skill.element !== 'NONE' ? skill.requiredElementXp : skill.requiredWeaponXp;
 }
 
 export const skillService = {
@@ -43,78 +52,49 @@ export const skillService = {
       throw new HttpError('Skill not found', 404);
     }
 
-    const character = await prisma.character.findUnique({
-      where: { id: characterId },
-      select: { gold: true },
-    });
-
-    if (!character) {
-      throw new HttpError('Character not found', 404);
-    }
-
     const missingRequirements: string[] = [];
 
-    // Vérifier le rank d'arme
-    let meetsRankRequirement = true;
-    let meetsWeaponXpRequirement = true;
-
-    if (skill.weaponTypeId && skill.weaponType) {
-      const weaponProgress = await prisma.characterWeaponProgress.findUnique({
-        where: {
-          characterId_weaponTypeId: {
-            characterId,
-            weaponTypeId: skill.weaponTypeId,
+    // Un skill élémentaire dépend de l'élément, les autres de leur arme
+    const progress = skill.element !== 'NONE'
+      ? await prisma.characterElementProgress.findUnique({
+          where: {
+            characterId_element: {
+              characterId,
+              element: skill.element,
+            },
           },
-        },
-      });
+        })
+      : skill.weaponTypeId
+        ? await prisma.characterWeaponProgress.findUnique({
+            where: {
+              characterId_weaponTypeId: {
+                characterId,
+                weaponTypeId: skill.weaponTypeId,
+              },
+            },
+          })
+        : null;
 
-      const currentRank = weaponProgress?.currentRank ?? 'E';
-      const currentXp = weaponProgress?.experience ?? 0;
+    const disciplineName = skill.element !== 'NONE' ? ELEMENT_XP_LABELS[skill.element] : skill.weaponType?.name;
+    const currentRank = progress?.currentRank ?? 'E';
+    const currentXp = progress?.experience ?? 0;
+    const xpCost = getSkillXpCost(skill);
 
-      meetsRankRequirement = progressionService.isRankSufficient(currentRank, skill.requiredRank);
-      meetsWeaponXpRequirement = currentXp >= skill.requiredWeaponXp;
+    const meetsRankRequirement = progressionService.isRankSufficient(currentRank, skill.requiredRank);
+    const hasEnoughXp = currentXp >= xpCost;
 
-      if (!meetsRankRequirement) {
-        missingRequirements.push(`Rank ${skill.requiredRank} en ${skill.weaponType.name} requis (actuel: ${currentRank})`);
-      }
-      if (!meetsWeaponXpRequirement) {
-        missingRequirements.push(`${skill.requiredWeaponXp} XP en ${skill.weaponType.name} requis (actuel: ${currentXp})`);
-      }
+    if (!meetsRankRequirement) {
+      missingRequirements.push(`Rang ${skill.requiredRank} en ${disciplineName} requis (actuel: ${currentRank})`);
+    }
+    if (!hasEnoughXp) {
+      missingRequirements.push(`${xpCost} XP en ${disciplineName} requis (solde: ${currentXp})`);
     }
 
-    // Vérifier l'XP d'élément
-    let meetsElementXpRequirement = true;
-    if (skill.element !== 'NONE' && skill.requiredElementXp > 0) {
-      const elementProgress = await prisma.characterElementProgress.findUnique({
-        where: {
-          characterId_element: {
-            characterId,
-            element: skill.element,
-          },
-        },
-      });
-
-      const currentXp = elementProgress?.experience ?? 0;
-      meetsElementXpRequirement = currentXp >= skill.requiredElementXp;
-
-      if (!meetsElementXpRequirement) {
-        missingRequirements.push(`${skill.requiredElementXp} XP en ${skill.element} requis (actuel: ${currentXp})`);
-      }
-    }
-
-    // Vérifier l'or
-    const hasEnoughGold = character.gold >= skill.goldCost;
-    if (!hasEnoughGold && skill.goldCost > 0) {
-      missingRequirements.push(`${skill.goldCost} or requis (actuel: ${character.gold})`);
-    }
-
-    const canLearn = meetsRankRequirement && meetsWeaponXpRequirement && meetsElementXpRequirement && hasEnoughGold;
+    const canLearn = meetsRankRequirement && hasEnoughXp;
 
     return {
       meetsRankRequirement,
-      meetsWeaponXpRequirement,
-      meetsElementXpRequirement,
-      hasEnoughGold,
+      hasEnoughXp,
       canLearn,
       missingRequirements,
     };
@@ -146,8 +126,8 @@ export const skillService = {
       return {
         success: false,
         skill: { id: skill.id, name: skill.name },
-        goldSpent: 0,
-        message: 'Skill already learned',
+        xpSpent: 0,
+        message: 'Compétence déjà apprise',
       };
     }
 
@@ -155,20 +135,28 @@ export const skillService = {
     const requirements = await this.checkSkillRequirements(characterId, skillId);
 
     if (!requirements.canLearn) {
-      throw new HttpError(
-        `Cannot learn skill: ${requirements.missingRequirements.join(', ')}`,
-        400
-      );
+      throw new HttpError(requirements.missingRequirements.join(', '), 400);
     }
 
-    // Transaction: débiter l'or et débloquer le skill
+    const xpCost = getSkillXpCost(skill);
+
+    // Transaction: débiter l'XP puis débloquer le skill
     await prisma.$transaction(async (tx) => {
-      // Débiter l'or
-      if (skill.goldCost > 0) {
-        await tx.character.update({
-          where: { id: characterId },
-          data: { gold: { decrement: skill.goldCost } },
-        });
+      // Débiter l'XP (solde revérifié dans la requête : pas de double dépense possible)
+      if (xpCost > 0) {
+        const { count } = skill.element !== 'NONE'
+          ? await tx.characterElementProgress.updateMany({
+              where: { characterId, element: skill.element, experience: { gte: xpCost } },
+              data: { experience: { decrement: xpCost } },
+            })
+          : await tx.characterWeaponProgress.updateMany({
+              where: { characterId, weaponTypeId: skill.weaponTypeId!, experience: { gte: xpCost } },
+              data: { experience: { decrement: xpCost } },
+            });
+
+        if (count === 0) {
+          throw new HttpError('XP insuffisante', 400);
+        }
       }
 
       // Créer ou mettre à jour le skill
@@ -191,7 +179,7 @@ export const skillService = {
     return {
       success: true,
       skill: { id: skill.id, name: skill.name },
-      goldSpent: skill.goldCost,
+      xpSpent: xpCost,
     };
   },
 
@@ -356,24 +344,24 @@ export const skillService = {
   async listSkillsByCategory(characterId: number) {
     const allSkills = await this.listAvailableSkills(characterId);
 
-    // Grouper par type d'arme
+    // Grouper par élément (skills élémentaires), sinon par type d'arme
     const byWeapon: Record<string, typeof allSkills> = {};
     const byElement: Record<string, typeof allSkills> = {};
     const general: typeof allSkills = [];
 
     for (const skill of allSkills) {
-      if (skill.weaponType) {
-        const weaponName = skill.weaponType.name;
-        if (!byWeapon[weaponName]) {
-          byWeapon[weaponName] = [];
-        }
-        byWeapon[weaponName].push(skill);
-      } else if (skill.element !== 'NONE') {
+      if (skill.element !== 'NONE') {
         const elementName = skill.element;
         if (!byElement[elementName]) {
           byElement[elementName] = [];
         }
         byElement[elementName].push(skill);
+      } else if (skill.weaponType) {
+        const weaponName = skill.weaponType.name;
+        if (!byWeapon[weaponName]) {
+          byWeapon[weaponName] = [];
+        }
+        byWeapon[weaponName].push(skill);
       } else {
         general.push(skill);
       }
@@ -400,6 +388,7 @@ export const skillService = {
 
     const skills = await prisma.skill.findMany({
       where: { id: { in: skillIds } },
+      include: { weaponType: { select: { code: true, name: true } } },
     });
 
     const skillMap = new Map(skills.map((s) => [s.id, s]));

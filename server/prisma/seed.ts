@@ -119,10 +119,10 @@ async function main() {
   // -- Épée --
   await prisma.skill.upsert({
     where: { name: 'Maîtrise de l\'Épée' },
-    update: { description: 'Passif : vos attaques automatiques à l\'épée infligent +5 (+10% de l\'attaque) dégâts supplémentaires.', attackScaling: 0.1, magicScaling: 0 },
+    update: { description: 'Passif : vos attaques automatiques à l\'épée infligent +5 dégâts supplémentaires.', attackScaling: 0, magicScaling: 0 },
     create: {
       name: 'Maîtrise de l\'Épée',
-      description: 'Passif : vos attaques automatiques à l\'épée infligent +5 (+10% de l\'attaque) dégâts supplémentaires.',
+      description: 'Passif : vos attaques automatiques à l\'épée infligent +5 dégâts supplémentaires.',
       category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
@@ -130,9 +130,9 @@ async function main() {
       requiredRank: 'E',
       requiredWeaponXp: 0,
       goldCost: 150,
-      // Passif de maîtrise : base + ratios ajoutés à chaque auto-attaque
+      // Passif de maîtrise : valeur fixe ajoutée à chaque auto-attaque
       baseDamage: 5,
-      attackScaling: 0.1,
+      attackScaling: 0,
       magicScaling: 0,
       cooldown: 0,
       manaCost: 0,
@@ -196,10 +196,10 @@ async function main() {
   // -- Double Dagues --
   await prisma.skill.upsert({
     where: { name: 'Maîtrise des Dagues' },
-    update: { description: 'Passif : vos attaques automatiques aux dagues infligent +3 (+10% de l\'attaque) dégâts supplémentaires.', attackScaling: 0.1, magicScaling: 0 },
+    update: { description: 'Passif : vos attaques automatiques aux dagues infligent +3 dégâts supplémentaires.', attackScaling: 0, magicScaling: 0 },
     create: {
       name: 'Maîtrise des Dagues',
-      description: 'Passif : vos attaques automatiques aux dagues infligent +3 (+10% de l\'attaque) dégâts supplémentaires.',
+      description: 'Passif : vos attaques automatiques aux dagues infligent +3 dégâts supplémentaires.',
       category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
@@ -207,9 +207,9 @@ async function main() {
       requiredRank: 'E',
       requiredWeaponXp: 0,
       goldCost: 150,
-      // Passif de maîtrise : base + ratios ajoutés à chaque auto-attaque
+      // Passif de maîtrise : valeur fixe ajoutée à chaque auto-attaque
       baseDamage: 3,
-      attackScaling: 0.1,
+      attackScaling: 0,
       magicScaling: 0,
       cooldown: 0,
       manaCost: 0,
@@ -271,10 +271,10 @@ async function main() {
   // -- Arc --
   await prisma.skill.upsert({
     where: { name: 'Maîtrise de l\'Arc' },
-    update: { description: 'Passif : vos attaques automatiques à l\'arc infligent +4 (+10% de l\'attaque) dégâts supplémentaires.', attackScaling: 0.1, magicScaling: 0 },
+    update: { description: 'Passif : vos attaques automatiques à l\'arc infligent +4 dégâts supplémentaires.', attackScaling: 0, magicScaling: 0 },
     create: {
       name: 'Maîtrise de l\'Arc',
-      description: 'Passif : vos attaques automatiques à l\'arc infligent +4 (+10% de l\'attaque) dégâts supplémentaires.',
+      description: 'Passif : vos attaques automatiques à l\'arc infligent +4 dégâts supplémentaires.',
       category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
@@ -282,9 +282,9 @@ async function main() {
       requiredRank: 'E',
       requiredWeaponXp: 0,
       goldCost: 150,
-      // Passif de maîtrise : base + ratios ajoutés à chaque auto-attaque
+      // Passif de maîtrise : valeur fixe ajoutée à chaque auto-attaque
       baseDamage: 4,
-      attackScaling: 0.1,
+      attackScaling: 0,
       magicScaling: 0,
       cooldown: 0,
       manaCost: 0,
@@ -322,7 +322,7 @@ async function main() {
 
   await prisma.skill.upsert({
     where: { name: 'Flèche de Glace' },
-    update: { attackScaling: 0.5, magicScaling: 0.6 },
+    update: { attackScaling: 0.5, magicScaling: 0.6, requiredRank: 'E', requiredElementXp: 0 },
     create: {
       name: 'Flèche de Glace',
       description: 'Une flèche imprégnée de glace qui ralentit l\'ennemi.',
@@ -330,9 +330,10 @@ async function main() {
       damageType: 'MAGICAL',
       element: 'ICE',
       weaponTypeId: bow.id,
-      requiredRank: 'D',
+      // Premier sort de l'élément : sans prix en XP, il permet de commencer à gagner de l'XP de glace
+      requiredRank: 'E',
       requiredWeaponXp: 500,
-      requiredElementXp: 100,
+      requiredElementXp: 0,
       goldCost: 200,
       baseDamage: 25,
       attackScaling: 0.5,
@@ -350,10 +351,10 @@ async function main() {
   // -- Hache à deux mains --
   await prisma.skill.upsert({
     where: { name: 'Maîtrise de la Hache' },
-    update: { description: 'Passif : vos attaques automatiques à la hache infligent +8 (+10% de l\'attaque) dégâts supplémentaires.', attackScaling: 0.1, magicScaling: 0 },
+    update: { description: 'Passif : vos attaques automatiques à la hache infligent +8 dégâts supplémentaires.', attackScaling: 0, magicScaling: 0 },
     create: {
       name: 'Maîtrise de la Hache',
-      description: 'Passif : vos attaques automatiques à la hache infligent +8 (+10% de l\'attaque) dégâts supplémentaires.',
+      description: 'Passif : vos attaques automatiques à la hache infligent +8 dégâts supplémentaires.',
       category: 'PASSIVE',
       damageType: 'PHYSICAL',
       element: 'NONE',
@@ -361,9 +362,9 @@ async function main() {
       requiredRank: 'E',
       requiredWeaponXp: 0,
       goldCost: 150,
-      // Passif de maîtrise : base + ratios ajoutés à chaque auto-attaque
+      // Passif de maîtrise : valeur fixe ajoutée à chaque auto-attaque
       baseDamage: 8,
-      attackScaling: 0.1,
+      attackScaling: 0,
       magicScaling: 0,
       cooldown: 0,
       manaCost: 0,
@@ -401,7 +402,7 @@ async function main() {
 
   await prisma.skill.upsert({
     where: { name: 'Séisme' },
-    update: { attackScaling: 0.8, magicScaling: 0.4 },
+    update: { attackScaling: 0.8, magicScaling: 0.4, requiredRank: 'E', requiredElementXp: 0 },
     create: {
       name: 'Séisme',
       description: 'Frappe le sol pour créer une onde de choc de terre.',
@@ -409,9 +410,10 @@ async function main() {
       damageType: 'MAGICAL',
       element: 'EARTH',
       weaponTypeId: twoHandedAxe.id,
-      requiredRank: 'D',
+      // Premier sort de l'élément : sans prix en XP, il permet de commencer à gagner de l'XP de terre
+      requiredRank: 'E',
       requiredWeaponXp: 500,
-      requiredElementXp: 100,
+      requiredElementXp: 0,
       goldCost: 200,
       baseDamage: 40,
       attackScaling: 0.8,
@@ -429,10 +431,10 @@ async function main() {
   // -- Baguette --
   await prisma.skill.upsert({
     where: { name: 'Maîtrise de la Baguette' },
-    update: { description: 'Passif : vos attaques automatiques à la baguette infligent +4 (+10% de la magie) dégâts supplémentaires.', attackScaling: 0, magicScaling: 0.1 },
+    update: { description: 'Passif : vos attaques automatiques à la baguette infligent +4 dégâts supplémentaires.', attackScaling: 0, magicScaling: 0 },
     create: {
       name: 'Maîtrise de la Baguette',
-      description: 'Passif : vos attaques automatiques à la baguette infligent +4 (+10% de la magie) dégâts supplémentaires.',
+      description: 'Passif : vos attaques automatiques à la baguette infligent +4 dégâts supplémentaires.',
       category: 'PASSIVE',
       damageType: 'MAGICAL',
       element: 'NONE',
@@ -440,10 +442,10 @@ async function main() {
       requiredRank: 'E',
       requiredWeaponXp: 0,
       goldCost: 150,
-      // Passif de maîtrise : base + ratios ajoutés à chaque auto-attaque
+      // Passif de maîtrise : valeur fixe ajoutée à chaque auto-attaque
       baseDamage: 4,
       attackScaling: 0,
-      magicScaling: 0.1,
+      magicScaling: 0,
       cooldown: 0,
       manaCost: 0,
       range: 0,
@@ -454,7 +456,7 @@ async function main() {
 
   await prisma.skill.upsert({
     where: { name: 'Boule de Feu' },
-    update: { attackScaling: 0, magicScaling: 1.2 },
+    update: { attackScaling: 0, magicScaling: 1.2, requiredElementXp: 0 },
     create: {
       name: 'Boule de Feu',
       description: 'Lance une boule de feu explosive.',
@@ -462,9 +464,10 @@ async function main() {
       damageType: 'MAGICAL',
       element: 'FIRE',
       weaponTypeId: wand.id,
+      // Premier sort de l'élément : sans prix en XP, il permet de commencer à gagner de l'XP de feu
       requiredRank: 'E',
       requiredWeaponXp: 100,
-      requiredElementXp: 50,
+      requiredElementXp: 0,
       goldCost: 50,
       baseDamage: 25,
       attackScaling: 0,
@@ -481,7 +484,7 @@ async function main() {
 
   await prisma.skill.upsert({
     where: { name: 'Éclair' },
-    update: { attackScaling: 0, magicScaling: 1.3 },
+    update: { attackScaling: 0, magicScaling: 1.3, requiredRank: 'E', requiredElementXp: 0 },
     create: {
       name: 'Éclair',
       description: 'Invoque un éclair sur l\'ennemi.',
@@ -489,9 +492,10 @@ async function main() {
       damageType: 'MAGICAL',
       element: 'LIGHTNING',
       weaponTypeId: wand.id,
-      requiredRank: 'D',
+      // Premier sort de l'élément : sans prix en XP, il permet de commencer à gagner de l'XP de foudre
+      requiredRank: 'E',
       requiredWeaponXp: 500,
-      requiredElementXp: 100,
+      requiredElementXp: 0,
       goldCost: 200,
       baseDamage: 35,
       attackScaling: 0,
@@ -509,10 +513,10 @@ async function main() {
   // -- Sceptre --
   await prisma.skill.upsert({
     where: { name: 'Maîtrise du Sceptre' },
-    update: { description: 'Passif : vos attaques automatiques au sceptre infligent +5 (+10% de la magie) dégâts supplémentaires.', attackScaling: 0, magicScaling: 0.1 },
+    update: { description: 'Passif : vos attaques automatiques au sceptre infligent +5 dégâts supplémentaires.', attackScaling: 0, magicScaling: 0 },
     create: {
       name: 'Maîtrise du Sceptre',
-      description: 'Passif : vos attaques automatiques au sceptre infligent +5 (+10% de la magie) dégâts supplémentaires.',
+      description: 'Passif : vos attaques automatiques au sceptre infligent +5 dégâts supplémentaires.',
       category: 'PASSIVE',
       damageType: 'MAGICAL',
       element: 'NONE',
@@ -520,10 +524,10 @@ async function main() {
       requiredRank: 'E',
       requiredWeaponXp: 0,
       goldCost: 150,
-      // Passif de maîtrise : base + ratios ajoutés à chaque auto-attaque
+      // Passif de maîtrise : valeur fixe ajoutée à chaque auto-attaque
       baseDamage: 5,
       attackScaling: 0,
-      magicScaling: 0.1,
+      magicScaling: 0,
       cooldown: 0,
       manaCost: 0,
       range: 0,
@@ -534,7 +538,7 @@ async function main() {
 
   await prisma.skill.upsert({
     where: { name: 'Vague de Lumière' },
-    update: { attackScaling: 0, magicScaling: 1 },
+    update: { attackScaling: 0, magicScaling: 1, requiredElementXp: 0 },
     create: {
       name: 'Vague de Lumière',
       description: 'Envoie une vague de lumière purificatrice.',
@@ -542,9 +546,10 @@ async function main() {
       damageType: 'MAGICAL',
       element: 'LIGHT',
       weaponTypeId: scepter.id,
+      // Premier sort de l'élément : sans prix en XP, il permet de commencer à gagner de l'XP de lumière
       requiredRank: 'E',
       requiredWeaponXp: 100,
-      requiredElementXp: 50,
+      requiredElementXp: 0,
       goldCost: 50,
       baseDamage: 20,
       attackScaling: 0,

@@ -1,4 +1,4 @@
-// Skills Menu - Menu des compétences par catégorie
+// Skills Menu - Soldes d'XP, rangs et assignation des compétences débloquées
 // SekaiMMO v2.0
 
 import type { SkillSlot, SkillData, WeaponCode, MagicElement } from '../../game/types';
@@ -10,29 +10,22 @@ export interface SkillEntry {
   assignedSlot: SkillSlot | null;
   currentLevel: number;
   requiredRank: string;
-  canUnlock: boolean;
-  unlockCost: number;
 }
 
 export interface WeaponProgress {
   code: WeaponCode;
-  name: string;
   currentXP: number;
   rank: string;
-  nextRankXP: number;
 }
 
 export interface ElementProgress {
   code: MagicElement;
-  name: string;
   currentXP: number;
   rank: string;
-  nextRankXP: number;
 }
 
 export interface SkillsMenuConfig {
   container: HTMLElement;
-  onUnlockSkill?: (skillId: number) => void;
   onAssignSkill?: (skillId: number, slot: SkillSlot) => void;
   onUnassignSkill?: (slot: SkillSlot) => void;
 }
@@ -157,7 +150,10 @@ export class SkillsMenu {
       const btn = document.createElement('button');
       btn.className = `sidebar-item ${this.selectedWeapon === weapon ? 'active' : ''}`;
       btn.innerHTML = `
-        <span class="item-name">${weaponNames[weapon]}</span>
+        <span class="item-info">
+          <span class="item-name">${weaponNames[weapon]}</span>
+          <span class="item-xp">${progress?.currentXP ?? 0} XP</span>
+        </span>
         <span class="item-rank">${progress?.rank ?? 'E'}</span>
       `;
       btn.addEventListener('click', () => {
@@ -199,7 +195,10 @@ export class SkillsMenu {
       const btn = document.createElement('button');
       btn.className = `sidebar-item ${this.selectedElement === element ? 'active' : ''} element-${element.toLowerCase()}`;
       btn.innerHTML = `
-        <span class="item-name">${elementNames[element]}</span>
+        <span class="item-info">
+          <span class="item-name">${elementNames[element]}</span>
+          <span class="item-xp">${progress?.currentXP ?? 0} XP</span>
+        </span>
         <span class="item-rank">${progress?.rank ?? 'E'}</span>
       `;
       btn.addEventListener('click', () => {
@@ -255,15 +254,18 @@ export class SkillsMenu {
   private renderSkillsList(container: HTMLElement, skills: SkillEntry[]): void {
     container.innerHTML = '';
 
-    if (skills.length === 0) {
-      container.innerHTML = '<div class="skills-placeholder">Aucune compétence disponible</div>';
+    // Les compétences s'achètent chez les maîtres : ici, seulement celles déjà débloquées
+    const unlockedSkills = skills.filter((entry) => entry.isUnlocked);
+
+    if (unlockedSkills.length === 0) {
+      container.innerHTML = '<div class="skills-placeholder">Aucune compétence débloquée</div>';
       return;
     }
 
-    skills.forEach((entry) => {
+    unlockedSkills.forEach((entry) => {
       const skillEl = document.createElement('div');
       const isPassive = entry.skill.category === 'PASSIVE';
-      skillEl.className = `skill-entry ${entry.isUnlocked ? 'unlocked' : 'locked'}${isPassive ? ' passive' : ''}`;
+      skillEl.className = `skill-entry unlocked${isPassive ? ' passive' : ''}`;
       skillEl.innerHTML = `
         <div class="skill-header">
           <span class="skill-name">${entry.skill.name}${isPassive ? ' (Passif)' : ''}</span>
@@ -281,11 +283,7 @@ export class SkillsMenu {
           `}
         </div>
         <div class="skill-actions">
-          ${!entry.isUnlocked ? `
-            <button class="btn-unlock ${entry.canUnlock ? '' : 'disabled'}" ${entry.canUnlock ? '' : 'disabled'}>
-              Débloquer (${entry.unlockCost} or)
-            </button>
-          ` : isPassive ? `
+          ${isPassive ? `
             <span class="assigned-info">Actif en permanence</span>
           ` : `
             <button class="btn-assign">Assigner</button>
@@ -295,14 +293,7 @@ export class SkillsMenu {
       `;
 
       // Event listeners
-      if (!entry.isUnlocked && entry.canUnlock) {
-        const unlockBtn = skillEl.querySelector('.btn-unlock')!;
-        unlockBtn.addEventListener('click', () => {
-          this.config.onUnlockSkill?.(entry.skill.id);
-        });
-      }
-
-      if (entry.isUnlocked && !isPassive) {
+      if (!isPassive) {
         const assignBtn = skillEl.querySelector('.btn-assign')!;
         assignBtn.addEventListener('click', () => {
           this.showSlotSelector(entry.skill.id);

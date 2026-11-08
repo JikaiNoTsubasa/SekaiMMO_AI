@@ -10,6 +10,9 @@ export type { ItemData, InventorySlot, InventoryPanelConfig } from './InventoryP
 export { SkillsMenu } from './SkillsMenu';
 export type { SkillEntry, WeaponProgress, ElementProgress, SkillsMenuConfig } from './SkillsMenu';
 
+export { MasterPanel } from './MasterPanel';
+export type { MasterPanelConfig } from './MasterPanel';
+
 export { ChatPanel } from './ChatPanel';
 export type { ChatMessage, ChatChannel, SystemLevel, ChatPanelConfig } from './ChatPanel';
 

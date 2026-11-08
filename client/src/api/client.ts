@@ -150,11 +150,4 @@ export class ApiClient {
       body: { skillId, slot }
     });
   }
-
-  unlockSkill(skillId: number) {
-    return this.request('/characters/skills/unlock', {
-      method: 'POST',
-      body: { skillId }
-    });
-  }
 }

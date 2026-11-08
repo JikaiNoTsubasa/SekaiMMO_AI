@@ -22,6 +22,7 @@ import { TelegraphManager } from '../systems/SkillTelegraph';
 import { CombatManager } from '../systems/CombatManager';
 import { CharacterAnimator } from '../systems/CharacterAnimator';
 import { SekaiMapLoader } from '../systems/SekaiMapLoader';
+import { isSkillWeaponEquipped } from '../../utils/skillWeapon';
 
 // Décalage vertical des barres de vie/mana sous les pieds des personnages et monstres
 const BAR_OFFSET_BELOW = 4;
@@ -33,8 +34,9 @@ export interface MainSceneOptions {
   initialPosition: { x: number; y: number };
   mapCode?: string; // Fichier public/maps/<mapCode>.sm
   onMapChange?: (mapCode: string) => void;
-  onReward?: (payload: { experience: number; gold: number; drops: { itemId: number; quantity: number }[] }) => void;
+  onReward?: (payload: { gold: number; drops: { itemId: number; quantity: number }[] }) => void;
   onSkillCast?: (slot: SkillSlot) => void;
+  onWrongWeapon?: (skill: SkillData) => void;
   // Stats réelles du personnage (sinon valeurs par défaut) et notification des changements
   character?: PlayerStatus;
   onStatusChange?: (status: PlayerStatus) => void;
@@ -788,6 +790,9 @@ export class MainScene extends Phaser.Scene {
   }
 
   private handleSkillStart(data: { slot: SkillSlot; skill: SkillData }): void {
+    // Vérifier l'arme équipée (le message s'affiche au lancer)
+    if (!isSkillWeaponEquipped(data.skill, this.autoAttackProfile.weaponCode)) return;
+
     // Vérifier le cooldown
     if ((this.skillCooldowns.get(data.slot) ?? 0) > 0) return;
 
@@ -800,6 +805,12 @@ export class MainScene extends Phaser.Scene {
 
   private handleSkillCast(data: { slot: SkillSlot; skill: SkillData; targetX: number; targetY: number }): void {
     const { slot, skill, targetX, targetY } = data;
+
+    // Vérifier l'arme équipée
+    if (!isSkillWeaponEquipped(skill, this.autoAttackProfile.weaponCode)) {
+      this.options.onWrongWeapon?.(skill);
+      return;
+    }
 
     // Vérifier le cooldown
     if ((this.skillCooldowns.get(slot) ?? 0) > 0) return;

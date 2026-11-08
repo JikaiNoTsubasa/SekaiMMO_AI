@@ -25,6 +25,7 @@ export interface SkillData {
   name: string;
   description?: string;
   category?: 'ACTIVE' | 'PASSIVE';
+  weaponType?: { code: WeaponCode; name: string } | null; // Arme à équiper pour lancer le skill
   damageType: DamageType;
   element: MagicElement;
   baseDamage: number;
@@ -162,7 +163,6 @@ export interface MonsterDefeatedEvent {
   monsterId: number;
   spawnId: number;
   defeatedBy: number;
-  experience: number;
   gold: number;
   drops: { itemId: number; quantity: number }[];
 }

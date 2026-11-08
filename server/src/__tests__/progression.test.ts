@@ -1,40 +1,19 @@
 // Progression Service Tests
 // SekaiMMO v2.0
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { prisma } from '../config/prisma';
 import { progressionService } from '../services/progressionService';
 
+vi.mock('../config/prisma', () => ({
+  prisma: {
+    weaponType: { findUnique: vi.fn() },
+    characterWeaponProgress: { findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
+    characterElementProgress: { findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
+  },
+}));
+
 describe('progressionService', () => {
-  describe('calculateRankFromXp', () => {
-    it('retourne E pour 0 XP', () => {
-      expect(progressionService.calculateRankFromXp(0)).toBe('E');
-    });
-
-    it('retourne E pour moins de 500 XP', () => {
-      expect(progressionService.calculateRankFromXp(499)).toBe('E');
-    });
-
-    it('retourne D pour 500+ XP', () => {
-      expect(progressionService.calculateRankFromXp(500)).toBe('D');
-      expect(progressionService.calculateRankFromXp(1999)).toBe('D');
-    });
-
-    it('retourne C pour 2000+ XP', () => {
-      expect(progressionService.calculateRankFromXp(2000)).toBe('C');
-      expect(progressionService.calculateRankFromXp(4999)).toBe('C');
-    });
-
-    it('retourne B pour 5000+ XP', () => {
-      expect(progressionService.calculateRankFromXp(5000)).toBe('B');
-      expect(progressionService.calculateRankFromXp(14999)).toBe('B');
-    });
-
-    it('retourne A pour 15000+ XP', () => {
-      expect(progressionService.calculateRankFromXp(15000)).toBe('A');
-      expect(progressionService.calculateRankFromXp(100000)).toBe('A');
-    });
-  });
-
   describe('isRankSufficient', () => {
     it('E est suffisant pour E', () => {
       expect(progressionService.isRankSufficient('E', 'E')).toBe(true);
@@ -83,25 +62,95 @@ describe('progressionService', () => {
       expect(progressionService.getXpForNextRank('A')).toBeNull();
     });
   });
+
+  describe('getNextRank', () => {
+    it('suit l\'ordre E -> D -> C -> B -> A', () => {
+      expect(progressionService.getNextRank('E')).toBe('D');
+      expect(progressionService.getNextRank('D')).toBe('C');
+      expect(progressionService.getNextRank('C')).toBe('B');
+      expect(progressionService.getNextRank('B')).toBe('A');
+      expect(progressionService.getNextRank('A')).toBeNull();
+    });
+  });
 });
 
-describe('Rank Progression System', () => {
-  it('la progression suit l\'ordre E -> D -> C -> B -> A', () => {
-    const xpValues = [0, 500, 2000, 5000, 15000];
-    const expectedRanks = ['E', 'D', 'C', 'B', 'A'];
+describe('processActionExperience', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.weaponType.findUnique).mockResolvedValue({ id: 1 } as never);
+    vi.mocked(prisma.characterWeaponProgress.upsert).mockResolvedValue({ id: 1, experience: 15, currentRank: 'E' } as never);
+    vi.mocked(prisma.characterElementProgress.upsert).mockResolvedValue({ id: 2, experience: 5, currentRank: 'E' } as never);
+  });
 
-    xpValues.forEach((xp, index) => {
-      expect(progressionService.calculateRankFromXp(xp)).toBe(expectedRanks[index]);
+  it('crédite le compteur de l\'arme et celui de l\'élément', async () => {
+    const result = await progressionService.processActionExperience(1, {
+      weaponXp: { weaponCode: 'SWORD', amount: 5 },
+      elementXp: { element: 'FIRE', amount: 5 },
+    });
+
+    expect(result.weaponProgress).toMatchObject({ weaponCode: 'SWORD', previousXp: 10, newXp: 15 });
+    expect(result.elementProgress).toMatchObject({ element: 'FIRE', previousXp: 0, newXp: 5 });
+  });
+
+  it('ne crédite aucun élément pour un coup sans élément', async () => {
+    const result = await progressionService.processActionExperience(1, {
+      weaponXp: { weaponCode: 'SWORD', amount: 5 },
+      elementXp: { element: 'NONE', amount: 5 },
+    });
+
+    expect(result.elementProgress).toBeUndefined();
+    expect(prisma.characterElementProgress.upsert).not.toHaveBeenCalled();
+  });
+
+  it('ne crédite aucune arme à mains nues', async () => {
+    const result = await progressionService.processActionExperience(1, {
+      elementXp: { element: 'FIRE', amount: 5 },
+    });
+
+    expect(result.weaponProgress).toBeUndefined();
+    expect(prisma.characterWeaponProgress.upsert).not.toHaveBeenCalled();
+  });
+
+  it('ne monte jamais le rang automatiquement', async () => {
+    vi.mocked(prisma.characterWeaponProgress.upsert).mockResolvedValue({ id: 1, experience: 100000, currentRank: 'E' } as never);
+
+    const result = await progressionService.processActionExperience(1, {
+      weaponXp: { weaponCode: 'SWORD', amount: 10 },
+    });
+
+    expect(result.weaponProgress).toMatchObject({ currentRank: 'E' });
+    expect(prisma.characterWeaponProgress.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('achat de rang', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.weaponType.findUnique).mockResolvedValue({ id: 1 } as never);
+  });
+
+  it('débite le prix du rang suivant du solde de l\'arme', async () => {
+    vi.mocked(prisma.characterWeaponProgress.findUnique).mockResolvedValue({ currentRank: 'E', experience: 600 } as never);
+    vi.mocked(prisma.characterWeaponProgress.updateMany).mockResolvedValue({ count: 1 } as never);
+
+    await expect(progressionService.purchaseWeaponRank(1, 'SWORD')).resolves.toEqual({ rank: 'D', xpSpent: 500 });
+    expect(prisma.characterWeaponProgress.updateMany).toHaveBeenCalledWith({
+      where: { characterId: 1, weaponTypeId: 1, currentRank: 'E', experience: { gte: 500 } },
+      data: { currentRank: 'D', experience: { decrement: 500 } },
     });
   });
 
-  it('les seuils de rank sont cohérents avec getXpForNextRank', () => {
-    // E -> D: 500 XP nécessaire
-    expect(progressionService.getXpForNextRank('E')).toBe(500);
-    expect(progressionService.calculateRankFromXp(500)).toBe('D');
+  it('refuse l\'achat si le solde est insuffisant', async () => {
+    vi.mocked(prisma.characterWeaponProgress.findUnique).mockResolvedValue({ currentRank: 'E', experience: 10 } as never);
+    vi.mocked(prisma.characterWeaponProgress.updateMany).mockResolvedValue({ count: 0 } as never);
 
-    // D -> C: 2000 XP nécessaire
-    expect(progressionService.getXpForNextRank('D')).toBe(2000);
-    expect(progressionService.calculateRankFromXp(2000)).toBe('C');
+    await expect(progressionService.purchaseWeaponRank(1, 'SWORD')).rejects.toThrow('XP insuffisante');
+  });
+
+  it('refuse l\'achat au rang maximum', async () => {
+    vi.mocked(prisma.characterElementProgress.findUnique).mockResolvedValue({ currentRank: 'A', experience: 99999 } as never);
+
+    await expect(progressionService.purchaseElementRank(1, 'FIRE')).rejects.toThrow('Rang maximum');
+    expect(prisma.characterElementProgress.updateMany).not.toHaveBeenCalled();
   });
 });

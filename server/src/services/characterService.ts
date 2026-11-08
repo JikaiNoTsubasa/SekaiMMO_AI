@@ -217,55 +217,6 @@ export const characterService = {
     return assertCharacterExists(characterId);
   },
 
-  async unlockSkill(characterId: number, skillId: number) {
-    const skill = await prisma.skill.findUnique({ where: { id: skillId } });
-
-    if (!skill) {
-      throw new HttpError('Skill not found', 404);
-    }
-
-    const existing = await prisma.characterSkill.findUnique({
-      where: {
-        characterId_skillId: {
-          characterId,
-          skillId
-        }
-      }
-    });
-
-    if (existing?.isUnlocked) {
-      return existing;
-    }
-
-    const progress = await prisma.characterWeaponProgress.findFirst({
-      where: {
-        characterId,
-        weaponTypeId: skill.weaponTypeId ?? undefined
-      }
-    });
-
-    if (skill.weaponTypeId && !progress) {
-      throw new HttpError('Weapon proficiency missing for this skill', 400);
-    }
-
-    return prisma.characterSkill.upsert({
-      where: {
-        characterId_skillId: {
-          characterId,
-          skillId
-        }
-      },
-      update: {
-        isUnlocked: true
-      },
-      create: {
-        characterId,
-        skillId,
-        isUnlocked: true
-      }
-    });
-  },
-
   async listSkills(characterId: number) {
     const character = await prisma.character.findUnique({
       where: { id: characterId },

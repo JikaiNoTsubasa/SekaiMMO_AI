@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Prisma: generate",
+      "type": "shell",
+      "command": "npm --workspace server run prisma:generate",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma: migrate dev",
+      "type": "shell",
+      "command": "npm --workspace server run prisma:dev",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "focus": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma: migrate deploy",
+      "type": "shell",
+      "command": "npm --workspace server run prisma:migrate",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma: db push",
+      "type": "shell",
+      "command": "npm --workspace server exec -- prisma db push",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "focus": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma: seed",
+      "type": "shell",
+      "command": "npm --workspace server run prisma:seed",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prisma: studio",
+      "type": "shell",
+      "command": "npm --workspace server exec -- prisma studio",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

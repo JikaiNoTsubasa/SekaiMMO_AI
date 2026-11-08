@@ -3,7 +3,6 @@
 
 import { prisma } from '../config/prisma';
 import type { SpawnedMonster } from './MonsterSpawnManager';
-import { WeaponCode } from '../generated/prisma';
 
 export interface LootDrop {
   itemId: number;
@@ -13,25 +12,15 @@ export interface LootDrop {
 }
 
 export interface KillReward {
-  experience: number;
   gold: number;
   drops: LootDrop[];
 }
 
 export class LootManager {
   /**
-   * Calcule les récompenses pour avoir tué un monstre
+   * Calcule les récompenses pour avoir tué un monstre (l'XP est gagnée à chaque coup, pas à la mort)
    */
-  async calculateRewards(
-    monster: SpawnedMonster,
-    killerLevel: number,
-    weaponCode: WeaponCode | null
-  ): Promise<KillReward> {
-    // Calculer l'XP avec bonus/malus selon la différence de niveau
-    const levelDiff = monster.level - killerLevel;
-    const xpMultiplier = this.getXPMultiplier(levelDiff);
-    const experience = Math.round(monster.baseExperience * xpMultiplier);
-
+  async calculateRewards(monster: SpawnedMonster): Promise<KillReward> {
     // Calculer l'or avec variation
     const goldVariance = 0.8 + Math.random() * 0.4; // ±20%
     const gold = Math.round(monster.baseGold * goldVariance);
@@ -40,31 +29,9 @@ export class LootManager {
     const drops = await this.rollDrops(monster.monsterId);
 
     return {
-      experience,
       gold,
       drops,
     };
-  }
-
-  /**
-   * Calcule le multiplicateur d'XP basé sur la différence de niveau
-   */
-  private getXPMultiplier(levelDiff: number): number {
-    if (levelDiff >= 5) {
-      // Monstre beaucoup plus fort = bonus XP
-      return 1.5;
-    } else if (levelDiff >= 2) {
-      return 1.2;
-    } else if (levelDiff >= -2) {
-      // Même niveau = XP normal
-      return 1.0;
-    } else if (levelDiff >= -5) {
-      // Monstre plus faible = moins d'XP
-      return 0.7;
-    } else {
-      // Monstre beaucoup plus faible = très peu d'XP
-      return 0.3;
-    }
   }
 
   /**
@@ -111,11 +78,7 @@ export class LootManager {
   /**
    * Applique les récompenses au personnage
    */
-  async applyRewards(
-    characterId: number,
-    rewards: KillReward,
-    weaponCode: WeaponCode | null
-  ): Promise<void> {
+  async applyRewards(characterId: number, rewards: KillReward): Promise<void> {
     // Transaction pour appliquer toutes les récompenses
     await prisma.$transaction(async (tx) => {
       // Ajouter l'or
@@ -125,45 +88,6 @@ export class LootManager {
           gold: { increment: rewards.gold },
         },
       });
-
-      // Ajouter l'XP à l'arme (aucune XP d'arme à mains nues)
-      const weaponType = weaponCode
-        ? await tx.weaponType.findUnique({ where: { code: weaponCode } })
-        : null;
-
-      if (weaponType) {
-        const existingProgress = await tx.characterWeaponProgress.findUnique({
-          where: {
-            characterId_weaponTypeId: {
-              characterId,
-              weaponTypeId: weaponType.id,
-            },
-          },
-        });
-
-        if (existingProgress) {
-          await tx.characterWeaponProgress.update({
-            where: {
-              characterId_weaponTypeId: {
-                characterId,
-                weaponTypeId: weaponType.id,
-              },
-            },
-            data: {
-              experience: { increment: rewards.experience },
-            },
-          });
-        } else {
-          await tx.characterWeaponProgress.create({
-            data: {
-              characterId,
-              weaponTypeId: weaponType.id,
-              experience: rewards.experience,
-              currentRank: 'E',
-            },
-          });
-        }
-      }
 
       // Ajouter les items à l'inventaire
       for (const drop of rewards.drops) {

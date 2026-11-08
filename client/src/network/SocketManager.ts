@@ -113,6 +113,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   isSystem?: boolean;
+  level?: 'info' | 'error' | 'success';
 }
 
 export interface CombatDamageEvent {
@@ -134,8 +135,35 @@ export interface MonsterAttackEvent {
   element: string;
 }
 
-export interface RewardEvent {
+export interface MasterOffer {
+  npcId: number;
+  name: string;
+  title: string | null;
+  discipline: string;
   experience: number;
+  rank: string;
+  nextRank: string | null;
+  nextRankCost: number | null;
+  skills: {
+    id: number;
+    name: string;
+    description: string | null;
+    category: string;
+    requiredRank: string;
+    xpCost: number;
+    baseDamage: number;
+    attackScaling: number;
+    magicScaling: number;
+    manaCost: number;
+    cooldown: number;
+    range: number;
+    isUnlocked: boolean;
+    canLearn: boolean;
+    missingRequirements: string[];
+  }[];
+}
+
+export interface RewardEvent {
   gold: number;
   drops: {
     itemId: number;
@@ -184,7 +212,7 @@ export type SocketEvents = {
   'monster:spawn': MonsterData;
   'monster:healthUpdate': { spawnId: number; health: number; maxHealth: number };
   'monster:moved': { spawnId: number; positionX: number; positionY: number };
-  'monster:defeated': { spawnId: number; monsterId: number; defeatedBy: number; experience: number; gold: number; drops: any[] };
+  'monster:defeated': { spawnId: number; monsterId: number; defeatedBy: number; gold: number; drops: any[] };
   'monster:attack': MonsterAttackEvent;
 
   // Joueurs
@@ -213,7 +241,6 @@ export type SocketEvents = {
   // Skills
   'skills:bar': SkillBarData;
   'skills:all': SkillsAllData;
-  'skills:learned': { success: boolean; skill: { id: number; name: string }; goldSpent: number; message?: string };
   'skills:error': { reason: string };
   'skill:failed': { reason: string };
 
@@ -247,10 +274,14 @@ export type SocketEvents = {
     isBanker: boolean;
   };
 
+  // Maîtres
+  'master:offer': MasterOffer;
+  'master:error': { reason: string };
+
   // Personnage
   'character:stats': CharacterStats;
-  'character:weaponProgress': any[];
-  'character:elementProgress': any[];
+  'character:weaponProgress': { weaponCode: string; experience: number; currentRank: string }[];
+  'character:elementProgress': { element: string; experience: number; currentRank: string }[];
 
   // Récompenses
   'reward:gained': RewardEvent;
@@ -332,7 +363,6 @@ export class SocketManager {
     // Skills
     this.socket.on('skills:bar', (data) => this.emit('skills:bar', data));
     this.socket.on('skills:all', (data) => this.emit('skills:all', data));
-    this.socket.on('skills:learned', (data) => this.emit('skills:learned', data));
     this.socket.on('skills:error', (data) => this.emit('skills:error', data));
     this.socket.on('skill:failed', (data) => this.emit('skill:failed', data));
 
@@ -355,6 +385,10 @@ export class SocketManager {
 
     // NPC
     this.socket.on('npc:interact', (data) => this.emit('npc:interact', data));
+
+    // Maîtres
+    this.socket.on('master:offer', (data) => this.emit('master:offer', data));
+    this.socket.on('master:error', (data) => this.emit('master:error', data));
 
     // Personnage
     this.socket.on('character:stats', (data) => this.emit('character:stats', data));
@@ -409,8 +443,16 @@ export class SocketManager {
     this.socket?.emit('skills:getAll');
   }
 
-  learnSkill(skillId: number): void {
-    this.socket?.emit('skills:learn', { skillId });
+  openMaster(npcId: number): void {
+    this.socket?.emit('master:open', { npcId });
+  }
+
+  buyMasterRank(npcId: number): void {
+    this.socket?.emit('master:buyRank', { npcId });
+  }
+
+  buyMasterSkill(npcId: number, skillId: number): void {
+    this.socket?.emit('master:buySkill', { npcId, skillId });
   }
 
   assignSkill(skillId: number, slot: string): void {

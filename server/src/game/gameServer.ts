@@ -7,9 +7,11 @@ import { z } from 'zod';
 
 import { appConfig } from '../config/env';
 import { prisma } from '../config/prisma';
-import { WeaponCode, DamageType, GuildRank } from '../generated/prisma';
+import { WeaponCode, DamageType, GuildRank, MagicElement, type NPC } from '../generated/prisma';
 import { characterService } from '../services/characterService';
 import { combatService, type AutoAttackProfile } from '../services/combatService';
+import { ELEMENT_XP_LABELS, WEAPON_XP_LABELS, progressionService } from '../services/progressionService';
+import { masterService } from '../services/masterService';
 import { inventoryService } from '../services/inventoryService';
 import { skillService } from '../services/skillService';
 import { guildService } from '../services/guildService';
@@ -40,6 +42,9 @@ interface ConnectedPlayer {
 // Marge de tolérance (latence / désync de position) pour les auto-attaques
 const AUTO_ATTACK_RANGE_TOLERANCE = 40;
 const AUTO_ATTACK_TIMING_TOLERANCE = 0.85;
+
+// Marge de tolérance (latence) sur le cooldown des skills
+const SKILL_COOLDOWN_TOLERANCE = 0.9;
 
 // Distance max joueur ↔ PNJ pour interagir
 const NPC_INTERACT_RANGE = 120;
@@ -82,7 +87,12 @@ const dropItemSchema = z.object({
 });
 
 // Schémas pour les skills
-const learnSkillSchema = z.object({
+const masterRequestSchema = z.object({
+  npcId: z.number().int().positive(),
+});
+
+const masterBuySkillSchema = z.object({
+  npcId: z.number().int().positive(),
   skillId: z.number().int().positive(),
 });
 
@@ -131,10 +141,16 @@ export class GameServer {
   private lootManager: LootManager;
   private connectedPlayers: Map<number, ConnectedPlayer> = new Map();
   private initializedMaps: Set<number> = new Set();
+  // Dernier cast par "characterId:skillId" (conservé après déconnexion : se reconnecter ne reset pas les cooldowns)
+  private skillLastCastAt: Map<string, number> = new Map();
 
   constructor(private readonly io: Server) {
     this.spawnManager = new MonsterSpawnManager(io);
-    this.monsterAI = new MonsterAI(io, this.spawnManager);
+    this.monsterAI = new MonsterAI(io, this.spawnManager, (characterId, damage) => {
+      combatService.applyDamageToCharacter(characterId, damage).catch((error) => {
+        console.error('[monster:attack]', error);
+      });
+    });
     this.lootManager = new LootManager();
 
     this.io.use(this.authenticateSocket);
@@ -577,19 +593,43 @@ export class GameServer {
       }
     });
 
-    // Apprendre un skill
-    socket.on('skills:learn', async (payload) => {
+    // Ouvrir la boutique d'un maître
+    socket.on('master:open', async (payload) => {
       try {
-        const data = learnSkillSchema.parse(payload);
-        const result = await skillService.learnSkill(characterId, data.skillId);
-        socket.emit('skills:learned', result);
+        const data = masterRequestSchema.parse(payload);
+        const npc = await this.getNearbyMaster(characterId, data.npcId);
+        socket.emit('master:offer', await masterService.getOffer(characterId, npc));
+      } catch (error: any) {
+        socket.emit('master:error', { reason: error.message || 'Maître indisponible' });
+      }
+    });
+
+    // Acheter le rang suivant auprès d'un maître
+    socket.on('master:buyRank', async (payload) => {
+      try {
+        const data = masterRequestSchema.parse(payload);
+        const npc = await this.getNearbyMaster(characterId, data.npcId);
+        const { rank, xpSpent } = await masterService.buyRank(characterId, npc);
+        this.sendSystemMessage(socket, `Rang ${rank} obtenu (-${xpSpent} XP)`);
+        await this.sendMasterUpdate(socket, characterId, npc);
+      } catch (error: any) {
+        socket.emit('master:error', { reason: error.message || 'Achat impossible' });
+      }
+    });
+
+    // Acheter une compétence auprès d'un maître
+    socket.on('master:buySkill', async (payload) => {
+      try {
+        const data = masterBuySkillSchema.parse(payload);
+        const npc = await this.getNearbyMaster(characterId, data.npcId);
+        const result = await masterService.buySkill(characterId, npc, data.skillId);
+        this.sendSystemMessage(socket, `Compétence apprise : ${result.skill.name} (-${result.xpSpent} XP)`);
 
         // Un passif de maîtrise modifie les auto-attaques
-        if (result.success) {
-          await this.refreshAutoAttackProfile(socket, characterId);
-        }
+        await this.refreshAutoAttackProfile(socket, characterId);
+        await this.sendMasterUpdate(socket, characterId, npc);
       } catch (error: any) {
-        socket.emit('skills:error', { reason: error.message || 'Cannot learn skill' });
+        socket.emit('master:error', { reason: error.message || 'Achat impossible' });
       }
     });
 
@@ -814,10 +854,8 @@ export class GameServer {
     // Récupérer les progressions d'armes
     socket.on('character:getWeaponProgress', async () => {
       try {
-        const progress = await prisma.characterWeaponProgress.findMany({
-          where: { characterId },
-        });
-        socket.emit('character:weaponProgress', progress);
+        const { weapons } = await progressionService.getAllProgress(characterId);
+        socket.emit('character:weaponProgress', weapons);
       } catch (error) {
         console.error('[character:getWeaponProgress]', error);
       }
@@ -826,10 +864,8 @@ export class GameServer {
     // Récupérer les progressions d'éléments
     socket.on('character:getElementProgress', async () => {
       try {
-        const progress = await prisma.characterElementProgress.findMany({
-          where: { characterId },
-        });
-        socket.emit('character:elementProgress', progress);
+        const { elements } = await progressionService.getAllProgress(characterId);
+        socket.emit('character:elementProgress', elements);
       } catch (error) {
         console.error('[character:getElementProgress]', error);
       }
@@ -936,9 +972,105 @@ export class GameServer {
       element: result.element,
     });
 
+    if (actualDamage > 0) {
+      await this.grantHitExperience(socket, characterId, profile.weaponCode, result.element, monster.baseExperience);
+    }
+
     if (killed) {
       await this.handleMonsterKill(socket, characterId, monster);
     }
+  }
+
+  /**
+   * Accorde l'XP d'une attaque qui touche : arme équipée (aucune à mains nues) + élément du skill
+   * et affiche le gain dans l'onglet System du chat
+   */
+  private async grantHitExperience(
+    socket: Socket,
+    characterId: number,
+    weaponCode: WeaponCode | null,
+    element: MagicElement,
+    amount: number
+  ): Promise<void> {
+    try {
+      const { weaponProgress, elementProgress } = await progressionService.processActionExperience(characterId, {
+        weaponXp: weaponCode ? { weaponCode, amount } : undefined,
+        elementXp: { element, amount },
+      });
+
+      const gains: string[] = [];
+      if (weaponProgress) {
+        gains.push(`+${amount} XP ${WEAPON_XP_LABELS[weaponProgress.weaponCode]}`);
+        socket.emit('character:weaponProgress', [{
+          weaponCode: weaponProgress.weaponCode,
+          experience: weaponProgress.newXp,
+          currentRank: weaponProgress.currentRank,
+        }]);
+      }
+      if (elementProgress) {
+        gains.push(`+${amount} XP ${ELEMENT_XP_LABELS[elementProgress.element]}`);
+        socket.emit('character:elementProgress', [{
+          element: elementProgress.element,
+          experience: elementProgress.newXp,
+          currentRank: elementProgress.currentRank,
+        }]);
+      }
+
+      if (gains.length > 0) {
+        this.sendSystemMessage(socket, gains.join(', '));
+      }
+    } catch (error) {
+      console.error('[combat:experience]', error);
+    }
+  }
+
+  /**
+   * Envoie un message dans l'onglet System du chat du joueur
+   */
+  private sendSystemMessage(socket: Socket, content: string, level: 'info' | 'error' | 'success' = 'info'): void {
+    socket.emit('chat:message', {
+      channel: 'system',
+      senderId: 0,
+      senderName: 'Système',
+      content,
+      timestamp: new Date(),
+      isSystem: true,
+      level,
+    });
+  }
+
+  /**
+   * Récupère un maître d'arme ou d'élément à portée du joueur
+   */
+  private async getNearbyMaster(characterId: number, npcId: number): Promise<NPC> {
+    const player = this.connectedPlayers.get(characterId);
+    const npc = await prisma.nPC.findUnique({ where: { id: npcId } });
+
+    if (!player || !npc || npc.mapId !== player.mapId || (!npc.weaponMasterFor && !npc.elementMasterFor)) {
+      throw new Error('Maître introuvable');
+    }
+
+    if (Math.hypot(player.positionX - npc.positionX, player.positionY - npc.positionY) > NPC_INTERACT_RANGE) {
+      throw new Error('Vous êtes trop loin du maître');
+    }
+
+    return npc;
+  }
+
+  /**
+   * Transmet les données à jour après un achat chez un maître
+   */
+  private async sendMasterUpdate(socket: Socket, characterId: number, npc: NPC): Promise<void> {
+    const [offer, progress, skills] = await Promise.all([
+      masterService.getOffer(characterId, npc),
+      progressionService.getAllProgress(characterId),
+      skillService.listSkillsByCategory(characterId),
+    ]);
+
+    socket.emit('master:offer', offer);
+    socket.emit('character:weaponProgress', progress.weapons);
+    socket.emit('character:elementProgress', progress.elements);
+    socket.emit('skills:all', skills);
   }
 
   /**
@@ -952,13 +1084,42 @@ export class GameServer {
     const player = this.connectedPlayers.get(characterId);
     if (!player) return;
 
-    // Récupérer le skill et le personnage
-    const [skill, character] = await Promise.all([
-      prisma.skill.findUnique({ where: { id: data.skillId } }),
+    // Récupérer le skill, le personnage et le déblocage
+    const [skill, character, characterSkill] = await Promise.all([
+      prisma.skill.findUnique({ where: { id: data.skillId }, include: { weaponType: true } }),
       prisma.character.findUnique({ where: { id: characterId } }),
+      prisma.characterSkill.findUnique({
+        where: { characterId_skillId: { characterId, skillId: data.skillId } },
+      }),
     ]);
 
     if (!skill || !character) return;
+
+    // Seul un skill actif débloqué peut être lancé
+    if (!characterSkill?.isUnlocked || skill.category !== 'ACTIVE') {
+      socket.emit('skill:failed', { reason: 'Skill not unlocked' });
+      return;
+    }
+
+    // Un skill lié à une arme nécessite cette arme équipée
+    if (skill.weaponType && skill.weaponType.code !== player.autoAttack.weaponCode) {
+      socket.emit('skill:failed', { reason: 'Wrong weapon equipped' });
+      this.sendSystemMessage(
+        socket,
+        `La bonne arme n'est pas équipée : ${skill.name} nécessite ${skill.weaponType.name}`,
+        'error'
+      );
+      return;
+    }
+
+    // Vérifier le cooldown (côté serveur : le client n'est pas fiable)
+    const cooldownKey = `${characterId}:${skill.id}`;
+    const now = Date.now();
+    const lastCastAt = this.skillLastCastAt.get(cooldownKey) ?? 0;
+    if (now - lastCastAt < skill.cooldown * 1000 * SKILL_COOLDOWN_TOLERANCE) {
+      socket.emit('skill:failed', { reason: 'Skill on cooldown' });
+      return;
+    }
 
     // Vérifier le mana
     if (character.mana < skill.manaCost) {
@@ -974,6 +1135,9 @@ export class GameServer {
       socket.emit('skill:failed', { reason: 'Out of range' });
       return;
     }
+
+    // Enregistré avant tout await : deux casts simultanés ne peuvent pas passer le cooldown
+    this.skillLastCastAt.set(cooldownKey, now);
 
     // Déduire le mana
     await prisma.character.update({
@@ -1019,6 +1183,7 @@ export class GameServer {
     );
 
     // Infliger les dégâts aux monstres touchés
+    let hitExperience = 0;
     for (const monster of hitMonsters) {
       const defenderStats = {
         physicalAttack: monster.physicalAttack,
@@ -1055,11 +1220,17 @@ export class GameServer {
         element: skill.element,
       });
 
+      if (actualDamage > 0) {
+        hitExperience += monster.baseExperience;
+      }
+
       // Si le monstre est tué
       if (killed) {
         await this.handleMonsterKill(socket, characterId, monster);
       }
     }
+
+    await this.grantHitExperience(socket, characterId, player.autoAttack.weaponCode, skill.element, hitExperience);
   }
 
   /**
@@ -1073,34 +1244,25 @@ export class GameServer {
     const player = this.connectedPlayers.get(characterId);
     if (!player) return;
 
-    const character = await prisma.character.findUnique({ where: { id: characterId } });
-    if (!character) return;
-
     // Calculer les récompenses
     const fullMonster = this.spawnManager.getMonster(monster.spawnId);
     if (!fullMonster) return;
 
-    const rewards = await this.lootManager.calculateRewards(
-      fullMonster,
-      character.level,
-      player.weaponCode as WeaponCode | null
-    );
+    const rewards = await this.lootManager.calculateRewards(fullMonster);
 
     // Appliquer les récompenses
-    await this.lootManager.applyRewards(characterId, rewards, player.weaponCode as WeaponCode | null);
+    await this.lootManager.applyRewards(characterId, rewards);
 
     // Émettre les événements
     this.io.to(`map:${player.mapId}`).emit('monster:defeated', {
       spawnId: monster.spawnId,
       monsterId: monster.monsterId,
       defeatedBy: characterId,
-      experience: rewards.experience,
       gold: rewards.gold,
       drops: rewards.drops,
     });
 
     socket.emit('player:reward', {
-      experience: rewards.experience,
       gold: rewards.gold,
       drops: rewards.drops,
     });

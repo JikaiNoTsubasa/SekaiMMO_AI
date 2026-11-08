@@ -1,8 +1,9 @@
 // Skill Bar Component - Barre de skills avec cooldowns visuels
 // SekaiMMO v2.0
 
-import type { SkillSlot, SkillData } from '../../game/types';
+import type { SkillSlot, SkillData, WeaponCode } from '../../game/types';
 import { formatSkillDamage } from '../../utils/skillDamage';
+import { isSkillWeaponEquipped } from '../../utils/skillWeapon';
 
 export interface SkillBarConfig {
   container: HTMLElement;
@@ -25,6 +26,7 @@ export class SkillBar {
   private slotStates: Map<SkillSlot, SkillSlotState> = new Map();
   private config: SkillBarConfig;
   private animationFrame: number | null = null;
+  private equippedWeapon: WeaponCode | null = null;
 
   constructor(config: SkillBarConfig) {
     this.config = config;
@@ -168,6 +170,14 @@ export class SkillBar {
   }
 
   /**
+   * Met à jour l'arme équipée (désactive les skills d'une autre arme)
+   */
+  setEquippedWeapon(weapon: WeaponCode | null): void {
+    this.equippedWeapon = weapon;
+    this.slotStates.forEach((_state, slot) => this.updateSlotVisuals(slot));
+  }
+
+  /**
    * Met à jour les visuels d'un slot
    */
   private updateSlotVisuals(slot: SkillSlot): void {
@@ -182,7 +192,7 @@ export class SkillBar {
     const tooltipEl = slotEl.querySelector<HTMLElement>('.skill-tooltip')!;
 
     // Reset classes
-    slotEl.classList.remove('empty', 'on-cooldown', 'no-mana');
+    slotEl.classList.remove('empty', 'on-cooldown', 'no-mana', 'wrong-weapon');
 
     if (!state.skill) {
       slotEl.classList.add('empty');
@@ -219,9 +229,16 @@ export class SkillBar {
       slotEl.classList.add('no-mana');
     }
 
+    // Arme requise
+    const hasRequiredWeapon = isSkillWeaponEquipped(state.skill, this.equippedWeapon);
+    if (!hasRequiredWeapon) {
+      slotEl.classList.add('wrong-weapon');
+    }
+
     // Tooltip
     tooltipEl.innerHTML = `
       <div class="tooltip-title">${state.skill.name}</div>
+      ${hasRequiredWeapon ? '' : `<div class="tooltip-weapon-required">Nécessite : ${state.skill.weaponType?.name}</div>`}
       <div class="tooltip-desc">${state.skill.description ?? ''}</div>
       <div class="tooltip-stats">
         <span>Dégâts: ${formatSkillDamage(state.skill)}</span>

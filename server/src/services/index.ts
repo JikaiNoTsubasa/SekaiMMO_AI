@@ -18,6 +18,9 @@ export type { ExperienceGain, ProgressionResult } from './progressionService';
 export { skillService } from './skillService';
 export type { SkillRequirements, LearnSkillResult } from './skillService';
 
+export { masterService } from './masterService';
+export type { MasterOffer } from './masterService';
+
 export { guildService } from './guildService';
 
 export { chatService } from './chatService';

@@ -264,8 +264,8 @@ model CharacterWeaponProgress {
   character    Character  @relation(fields: [characterId], references: [id], onDelete: Cascade)
   weaponType   WeaponType @relation(fields: [weaponTypeId], references: [id])
 
-  experience   Int  @default(0)   // XP totale gagnée
-  currentRank  Rank @default(E)   // Rank actuel
+  experience   Int  @default(0)   // Solde d'XP (dépensé chez le maître de l'arme)
+  currentRank  Rank @default(E)   // Rank actuel (acheté chez le maître)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -309,10 +309,10 @@ model Skill {
   // Prérequis
   weaponTypeId      Int?
   weaponType        WeaponType? @relation(fields: [weaponTypeId], references: [id])
-  requiredRank      Rank        @default(E)      // Rank requis pour débloquer
-  requiredWeaponXp  Int         @default(0)      // XP arme minimum
-  requiredElementXp Int         @default(0)      // XP élément minimum
-  goldCost          Int         @default(0)      // Coût en or pour apprendre
+  requiredRank      Rank        @default(E)      // Rank requis pour débloquer (de l'élément si skill élémentaire, sinon de l'arme)
+  requiredWeaponXp  Int         @default(0)      // Prix en XP d'arme (skills sans élément)
+  requiredElementXp Int         @default(0)      // Prix en XP d'élément (skills élémentaires)
+  goldCost          Int         @default(0)      // Inutilisé : les skills se paient uniquement en XP
 
   // Stats du skill
   baseDamage        Int   @default(0)

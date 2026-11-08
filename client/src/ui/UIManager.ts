@@ -2,10 +2,12 @@
 // SekaiMMO v2.0
 
 import type { InventoryItem, SocketManager } from '../network/SocketManager';
-import type { SkillSlot, SkillData } from '../game/types';
+import type { SkillSlot, SkillData, WeaponCode, MagicElement } from '../game/types';
+import { getWrongWeaponMessage, isSkillWeaponEquipped } from '../utils/skillWeapon';
 import { SkillBar } from './components/SkillBar';
 import { InventoryPanel, parseItemStats, resolveItemIcon } from './components/InventoryPanel';
 import { SkillsMenu } from './components/SkillsMenu';
+import { MasterPanel } from './components/MasterPanel';
 import { ChatPanel } from './components/ChatPanel';
 import { BankPanel } from './components/BankPanel';
 import { GuildPanel } from './components/GuildPanel';
@@ -31,8 +33,11 @@ export class UIManager {
   private inventoryPanel: InventoryPanel | null = null;
   private equippedWeaponId: number | null = null;
   private equippedWeaponName: string | null = null;
+  private equippedWeaponCode: WeaponCode | null = null;
+  private currentGold = 0;
   private hasReceivedAutoAttackProfile = false;
   private skillsMenu: SkillsMenu | null = null;
+  private masterPanel: MasterPanel | null = null;
   private bankPanel: BankPanel | null = null;
   private guildPanel: GuildPanel | null = null;
   private settingsPanel: SettingsPanel | null = null;
@@ -138,9 +143,14 @@ export class UIManager {
       container: skillBarContainer as HTMLElement,
       onSkillClick: (slot) => {
         const skill = this.skillBarData.get(slot);
-        if (skill) {
-          this.config.onSkillCast?.(slot, skill.id);
+        if (!skill) return;
+
+        if (!isSkillWeaponEquipped(skill, this.equippedWeaponCode)) {
+          this.showNotification(getWrongWeaponMessage(skill), 'error');
+          return;
         }
+
+        this.config.onSkillCast?.(slot, skill.id);
       },
     });
 
@@ -175,6 +185,8 @@ export class UIManager {
         const changed = profile.weaponItemId !== this.equippedWeaponId;
         this.equippedWeaponId = profile.weaponItemId;
         this.equippedWeaponName = profile.weaponName;
+        this.equippedWeaponCode = profile.weaponCode;
+        this.skillBar.setEquippedWeapon(profile.weaponCode);
         this.inventoryPanel?.setEquippedWeapon(profile.weaponItemId, profile.weaponName);
         if (changed && this.hasReceivedAutoAttackProfile) {
           this.showNotification(
@@ -193,12 +205,55 @@ export class UIManager {
       })
     );
 
+    // Soldes d'XP et rangs
+    this.unsubscribers.push(
+      this.socketManager.on('character:weaponProgress', (progress) => {
+        this.skillsMenu?.setWeaponProgress(
+          progress.map((p) => ({ code: p.weaponCode as WeaponCode, currentXP: p.experience, rank: p.currentRank }))
+        );
+      })
+    );
+
+    this.unsubscribers.push(
+      this.socketManager.on('character:elementProgress', (progress) => {
+        this.skillsMenu?.setElementProgress(
+          progress.map((p) => ({ code: p.element as MagicElement, currentXP: p.experience, rank: p.currentRank }))
+        );
+      })
+    );
+
+    // Boutique des maîtres
+    this.unsubscribers.push(
+      this.socketManager.on('master:offer', (offer) => {
+        if (!this.masterPanel) {
+          this.masterPanel = new MasterPanel({
+            container: this.modalContainer,
+            onBuyRank: (npcId) => {
+              this.socketManager.buyMasterRank(npcId);
+            },
+            onBuySkill: (npcId, skillId) => {
+              this.socketManager.buyMasterSkill(npcId, skillId);
+            },
+          });
+        }
+        this.masterPanel.setOffer(offer);
+        this.closeOtherPanels('master');
+        this.masterPanel.show();
+      })
+    );
+
+    this.unsubscribers.push(
+      this.socketManager.on('master:error', (data) => {
+        this.showNotification(data.reason, 'error');
+      })
+    );
+
     // Chat messages
     this.unsubscribers.push(
       this.socketManager.on('chat:message', (data) => {
         // Les messages système du serveur vont dans l'onglet System
         if (data.isSystem) {
-          this.chatPanel.addSystemMessage(data.content);
+          this.chatPanel.addSystemMessage(data.content, data.level);
           return;
         }
         this.chatPanel.addMessage({
@@ -218,9 +273,6 @@ export class UIManager {
       this.socketManager.on('reward:gained', (data) => {
         if (data.gold > 0) {
           this.showNotification(`+${data.gold} Or`, 'success');
-        }
-        if (data.experience > 0) {
-          this.showNotification(`+${data.experience} XP`, 'info');
         }
       })
     );
@@ -290,8 +342,6 @@ export class UIManager {
         assignedSlot: s.assignedKey as SkillSlot | null,
         currentLevel: 1,
         requiredRank: s.requiredRank ?? 'E',
-        canUnlock: s.canLearn ?? true,
-        unlockCost: s.goldCost ?? 0,
       }));
       this.skillsMenu.setWeaponSkills(weaponCode as any, entries);
     }
@@ -320,8 +370,6 @@ export class UIManager {
         assignedSlot: s.assignedKey as SkillSlot | null,
         currentLevel: 1,
         requiredRank: s.requiredRank ?? 'E',
-        canUnlock: s.canLearn ?? true,
-        unlockCost: s.goldCost ?? 0,
       }));
       this.skillsMenu.setElementSkills(elementCode as any, entries);
     }
@@ -337,6 +385,7 @@ export class UIManager {
           id: slotData.skillId,
           name: slotData.skill.name as string,
           description: slotData.skill.description as string | undefined,
+          weaponType: slotData.skill.weaponType as SkillData['weaponType'],
           baseDamage: slotData.skill.baseDamage as number,
           attackScaling: (slotData.skill.attackScaling as number) ?? 0,
           magicScaling: (slotData.skill.magicScaling as number) ?? 0,
@@ -445,6 +494,8 @@ export class UIManager {
     // Gold
     const goldAmount = this.uiContainer.querySelector('.gold-amount')!;
     goldAmount.textContent = gold.toLocaleString();
+    this.currentGold = gold;
+    this.inventoryPanel?.setGold(gold);
 
     // Update skill bar mana states
     this.skillBar.updateManaStates(mana);
@@ -481,6 +532,7 @@ export class UIManager {
         },
       });
       this.inventoryPanel.setEquippedWeapon(this.equippedWeaponId, this.equippedWeaponName);
+      this.inventoryPanel.setGold(this.currentGold);
       this.socketManager.getInventory();
     }
     this.closeOtherPanels('inventory');
@@ -491,9 +543,6 @@ export class UIManager {
     if (!this.skillsMenu) {
       this.skillsMenu = new SkillsMenu({
         container: this.modalContainer,
-        onUnlockSkill: (skillId) => {
-          this.socketManager.learnSkill(skillId);
-        },
         onAssignSkill: (skillId, slot) => {
           this.socketManager.assignSkill(skillId, slot);
         },
@@ -502,6 +551,8 @@ export class UIManager {
         },
       });
       this.socketManager.getAllSkills();
+      this.socketManager.getWeaponProgress();
+      this.socketManager.getElementProgress();
     }
     this.closeOtherPanels('skills');
     this.skillsMenu.toggle();
@@ -577,6 +628,7 @@ export class UIManager {
   private closeOtherPanels(except: string): void {
     if (except !== 'inventory') this.inventoryPanel?.hide();
     if (except !== 'skills') this.skillsMenu?.hide();
+    if (except !== 'master') this.masterPanel?.hide();
     if (except !== 'guild') this.guildPanel?.hide();
     if (except !== 'bank') this.bankPanel?.hide();
     if (except !== 'settings') this.settingsPanel?.hide();
@@ -628,6 +680,7 @@ export class UIManager {
   private closeAllModals(): void {
     this.inventoryPanel?.hide();
     this.skillsMenu?.hide();
+    this.masterPanel?.hide();
     this.guildPanel?.hide();
     this.bankPanel?.hide();
     this.settingsPanel?.hide();
@@ -647,6 +700,7 @@ export class UIManager {
     this.chatPanel.destroy();
     this.inventoryPanel?.destroy();
     this.skillsMenu?.destroy();
+    this.masterPanel?.destroy();
     this.guildPanel?.destroy();
     this.bankPanel?.destroy();
     this.settingsPanel?.destroy();

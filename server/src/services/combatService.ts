@@ -360,27 +360,23 @@ export const combatService = {
   /**
    * Applique des dégâts à un personnage
    */
-  async applyDamageToCharacter(characterId: number, damage: number): Promise<{ health: number; isDead: boolean }> {
-    const character = await prisma.character.findUnique({
-      where: { id: characterId },
-      select: { health: true },
+  async applyDamageToCharacter(characterId: number, damage: number): Promise<{ isDead: boolean }> {
+    // Décrément en une requête : plusieurs monstres peuvent frapper au même instant
+    const { count } = await prisma.character.updateMany({
+      where: { id: characterId, health: { gt: damage } },
+      data: { health: { decrement: damage } },
     });
 
-    if (!character) {
-      throw new Error('Character not found');
+    if (count > 0) {
+      return { isDead: false };
     }
 
-    const newHealth = Math.max(0, character.health - damage);
-
-    await prisma.character.update({
+    await prisma.character.updateMany({
       where: { id: characterId },
-      data: { health: newHealth },
+      data: { health: 0 },
     });
 
-    return {
-      health: newHealth,
-      isDead: newHealth <= 0,
-    };
+    return { isDead: true };
   },
 
   /**

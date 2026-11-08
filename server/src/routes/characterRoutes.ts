@@ -5,8 +5,7 @@ import {
   createCharacter,
   getCharacter,
   getInventory,
-  listSkills,
-  unlockSkill
+  listSkills
 } from '../controllers/characterController';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { authenticate } from '../middleware/authMiddleware';
@@ -19,4 +18,3 @@ characterRouter.get('/me', asyncHandler(getCharacter));
 characterRouter.get('/inventory', asyncHandler(getInventory));
 characterRouter.get('/skills', asyncHandler(listSkills));
 characterRouter.post('/skills/assign', asyncHandler(assignSkill));
-characterRouter.post('/skills/unlock', asyncHandler(unlockSkill));

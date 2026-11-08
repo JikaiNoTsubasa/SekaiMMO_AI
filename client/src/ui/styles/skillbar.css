@@ -73,6 +73,19 @@
   filter: saturate(0.4);
 }
 
+.skill-slot-v2.wrong-weapon {
+  cursor: not-allowed;
+}
+
+.skill-slot-v2.wrong-weapon .skill-slot-inner {
+  filter: grayscale(100%);
+  opacity: 0.45;
+}
+
+.tooltip-weapon-required {
+  color: #e07060;
+}
+
 .skill-icon {
   position: absolute;
   inset: 3px;

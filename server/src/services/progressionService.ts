@@ -5,8 +5,8 @@ import type { MagicElement, Rank, WeaponCode } from '../generated/prisma';
 import { prisma } from '../config/prisma';
 import { HttpError } from '../middleware/errorHandler';
 
-// Seuils d'XP pour chaque rank
-const RANK_THRESHOLDS: Record<Rank, number> = {
+// Prix en XP de chaque rank, à payer auprès du maître (le rank E est acquis d'office)
+const RANK_COSTS: Record<Rank, number> = {
   E: 0,       // Débutant
   D: 500,     // Apprenti
   C: 2000,    // Confirmé
@@ -16,6 +16,28 @@ const RANK_THRESHOLDS: Record<Rank, number> = {
 
 // Ordre des ranks pour comparaison
 const RANK_ORDER: Rank[] = ['E', 'D', 'C', 'B', 'A'];
+
+// Libellés des compteurs d'XP affichés aux joueurs
+export const WEAPON_XP_LABELS: Record<WeaponCode, string> = {
+  SWORD: 'Épée',
+  DUAL_DAGGERS: 'Dagues',
+  BOW: 'Arc',
+  TWO_HANDED_AXE: 'Hache',
+  WAND: 'Baguette',
+  SCEPTER: 'Sceptre',
+};
+
+export const ELEMENT_XP_LABELS: Record<MagicElement, string> = {
+  NONE: 'Neutre',
+  FIRE: 'Feu',
+  WATER: 'Eau',
+  EARTH: 'Terre',
+  AIR: 'Air',
+  LIGHTNING: 'Foudre',
+  ICE: 'Glace',
+  DARKNESS: 'Ténèbres',
+  LIGHT: 'Lumière',
+};
 
 export interface ExperienceGain {
   weaponXp?: { weaponCode: WeaponCode; amount: number };
@@ -28,35 +50,23 @@ export interface ProgressionResult {
     weaponCode: WeaponCode;
     previousXp: number;
     newXp: number;
-    previousRank: Rank;
-    newRank: Rank;
-    rankUp: boolean;
+    currentRank: Rank;
   };
   elementProgress?: {
     element: MagicElement;
     previousXp: number;
     newXp: number;
-    previousRank: Rank;
-    newRank: Rank;
-    rankUp: boolean;
+    currentRank: Rank;
   };
   goldGained?: number;
 }
 
-export const progressionService = {
-  /**
-   * Calcule le rank basé sur l'XP
-   */
-  calculateRankFromXp(experience: number): Rank {
-    for (let i = RANK_ORDER.length - 1; i >= 0; i--) {
-      const rank = RANK_ORDER[i];
-      if (experience >= RANK_THRESHOLDS[rank]) {
-        return rank;
-      }
-    }
-    return 'E';
-  },
+export interface RankPurchaseResult {
+  rank: Rank;
+  xpSpent: number;
+}
 
+export const progressionService = {
   /**
    * Vérifie si un rank est supérieur ou égal à un autre
    */
@@ -65,14 +75,113 @@ export const progressionService = {
   },
 
   /**
-   * Obtient l'XP nécessaire pour le prochain rank
+   * Obtient le rank suivant (null si déjà au rank max)
+   */
+  getNextRank(currentRank: Rank): Rank | null {
+    return RANK_ORDER[RANK_ORDER.indexOf(currentRank) + 1] ?? null;
+  },
+
+  /**
+   * Obtient le prix en XP du prochain rank
    */
   getXpForNextRank(currentRank: Rank): number | null {
-    const currentIndex = RANK_ORDER.indexOf(currentRank);
-    if (currentIndex >= RANK_ORDER.length - 1) {
-      return null; // Déjà au rank max
+    const nextRank = this.getNextRank(currentRank);
+    return nextRank ? RANK_COSTS[nextRank] : null;
+  },
+
+  /**
+   * Achète le rank suivant d'une arme avec le solde d'XP de cette arme
+   */
+  async purchaseWeaponRank(characterId: number, weaponCode: WeaponCode): Promise<RankPurchaseResult> {
+    const weaponType = await prisma.weaponType.findUnique({
+      where: { code: weaponCode },
+    });
+
+    if (!weaponType) {
+      throw new HttpError('Weapon type not found', 404);
     }
-    return RANK_THRESHOLDS[RANK_ORDER[currentIndex + 1]];
+
+    const progress = await prisma.characterWeaponProgress.findUnique({
+      where: {
+        characterId_weaponTypeId: {
+          characterId,
+          weaponTypeId: weaponType.id,
+        },
+      },
+    });
+
+    const currentRank = progress?.currentRank ?? 'E';
+    const { rank, xpSpent } = this.getRankPurchase(currentRank);
+
+    // Le solde et le rank sont vérifiés dans la même requête : pas de double achat possible
+    const { count } = await prisma.characterWeaponProgress.updateMany({
+      where: {
+        characterId,
+        weaponTypeId: weaponType.id,
+        currentRank,
+        experience: { gte: xpSpent },
+      },
+      data: {
+        currentRank: rank,
+        experience: { decrement: xpSpent },
+      },
+    });
+
+    if (count === 0) {
+      throw new HttpError(`XP insuffisante : ${xpSpent} XP requis`, 400);
+    }
+
+    return { rank, xpSpent };
+  },
+
+  /**
+   * Achète le rank suivant d'un élément avec le solde d'XP de cet élément
+   */
+  async purchaseElementRank(characterId: number, element: MagicElement): Promise<RankPurchaseResult> {
+    const progress = await prisma.characterElementProgress.findUnique({
+      where: {
+        characterId_element: {
+          characterId,
+          element,
+        },
+      },
+    });
+
+    const currentRank = progress?.currentRank ?? 'E';
+    const { rank, xpSpent } = this.getRankPurchase(currentRank);
+
+    // Le solde et le rank sont vérifiés dans la même requête : pas de double achat possible
+    const { count } = await prisma.characterElementProgress.updateMany({
+      where: {
+        characterId,
+        element,
+        currentRank,
+        experience: { gte: xpSpent },
+      },
+      data: {
+        currentRank: rank,
+        experience: { decrement: xpSpent },
+      },
+    });
+
+    if (count === 0) {
+      throw new HttpError(`XP insuffisante : ${xpSpent} XP requis`, 400);
+    }
+
+    return { rank, xpSpent };
+  },
+
+  /**
+   * Détermine le rank à acheter et son prix
+   */
+  getRankPurchase(currentRank: Rank): RankPurchaseResult {
+    const rank = this.getNextRank(currentRank);
+
+    if (!rank) {
+      throw new HttpError('Rang maximum atteint', 400);
+    }
+
+    return { rank, xpSpent: RANK_COSTS[rank] };
   },
 
   /**
@@ -82,7 +191,7 @@ export const progressionService = {
     characterId: number,
     weaponCode: WeaponCode,
     amount: number
-  ): Promise<{ previousXp: number; newXp: number; previousRank: Rank; newRank: Rank; rankUp: boolean }> {
+  ): Promise<{ previousXp: number; newXp: number; currentRank: Rank }> {
     const weaponType = await prisma.weaponType.findUnique({
       where: { code: weaponCode },
     });
@@ -91,56 +200,29 @@ export const progressionService = {
       throw new HttpError('Weapon type not found', 404);
     }
 
-    // Récupérer ou créer la progression
-    let progress = await prisma.characterWeaponProgress.findUnique({
+    // Créer ou incrémenter la progression (upsert : plusieurs coups peuvent arriver en même temps)
+    const progress = await prisma.characterWeaponProgress.upsert({
       where: {
         characterId_weaponTypeId: {
           characterId,
           weaponTypeId: weaponType.id,
         },
       },
+      create: {
+        characterId,
+        weaponTypeId: weaponType.id,
+        experience: amount,
+        currentRank: 'E',
+      },
+      update: {
+        experience: { increment: amount },
+      },
     });
 
-    const previousXp = progress?.experience ?? 0;
-    const previousRank = progress?.currentRank ?? 'E';
-
-    // Mettre à jour ou créer
-    if (progress) {
-      progress = await prisma.characterWeaponProgress.update({
-        where: { id: progress.id },
-        data: {
-          experience: { increment: amount },
-        },
-      });
-    } else {
-      progress = await prisma.characterWeaponProgress.create({
-        data: {
-          characterId,
-          weaponTypeId: weaponType.id,
-          experience: amount,
-          currentRank: 'E',
-        },
-      });
-    }
-
-    // Calculer le nouveau rank
-    const newRank = this.calculateRankFromXp(progress.experience);
-    const rankUp = RANK_ORDER.indexOf(newRank) > RANK_ORDER.indexOf(previousRank);
-
-    // Mettre à jour le rank si nécessaire
-    if (rankUp) {
-      await prisma.characterWeaponProgress.update({
-        where: { id: progress.id },
-        data: { currentRank: newRank },
-      });
-    }
-
     return {
-      previousXp,
+      previousXp: progress.experience - amount,
       newXp: progress.experience,
-      previousRank,
-      newRank,
-      rankUp,
+      currentRank: progress.currentRank,
     };
   },
 
@@ -151,61 +233,34 @@ export const progressionService = {
     characterId: number,
     element: MagicElement,
     amount: number
-  ): Promise<{ previousXp: number; newXp: number; previousRank: Rank; newRank: Rank; rankUp: boolean }> {
+  ): Promise<{ previousXp: number; newXp: number; currentRank: Rank }> {
     if (element === 'NONE') {
       throw new HttpError('Cannot grant XP for NONE element', 400);
     }
 
-    // Récupérer ou créer la progression
-    let progress = await prisma.characterElementProgress.findUnique({
+    // Créer ou incrémenter la progression (upsert : plusieurs coups peuvent arriver en même temps)
+    const progress = await prisma.characterElementProgress.upsert({
       where: {
         characterId_element: {
           characterId,
           element,
         },
       },
+      create: {
+        characterId,
+        element,
+        experience: amount,
+        currentRank: 'E',
+      },
+      update: {
+        experience: { increment: amount },
+      },
     });
 
-    const previousXp = progress?.experience ?? 0;
-    const previousRank = progress?.currentRank ?? 'E';
-
-    // Mettre à jour ou créer
-    if (progress) {
-      progress = await prisma.characterElementProgress.update({
-        where: { id: progress.id },
-        data: {
-          experience: { increment: amount },
-        },
-      });
-    } else {
-      progress = await prisma.characterElementProgress.create({
-        data: {
-          characterId,
-          element,
-          experience: amount,
-          currentRank: 'E',
-        },
-      });
-    }
-
-    // Calculer le nouveau rank
-    const newRank = this.calculateRankFromXp(progress.experience);
-    const rankUp = RANK_ORDER.indexOf(newRank) > RANK_ORDER.indexOf(previousRank);
-
-    // Mettre à jour le rank si nécessaire
-    if (rankUp) {
-      await prisma.characterElementProgress.update({
-        where: { id: progress.id },
-        data: { currentRank: newRank },
-      });
-    }
-
     return {
-      previousXp,
+      previousXp: progress.experience - amount,
       newXp: progress.experience,
-      previousRank,
-      newRank,
-      rankUp,
+      currentRank: progress.currentRank,
     };
   },
 
@@ -333,7 +388,7 @@ export const progressionService = {
       return {
         experience: 0,
         currentRank: 'E' as Rank,
-        nextRankXp: RANK_THRESHOLDS.D,
+        nextRankXp: RANK_COSTS.D,
       };
     }
 
@@ -365,7 +420,7 @@ export const progressionService = {
       return {
         experience: 0,
         currentRank: 'E' as Rank,
-        nextRankXp: RANK_THRESHOLDS.D,
+        nextRankXp: RANK_COSTS.D,
       };
     }
 

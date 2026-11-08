@@ -10,6 +10,7 @@ import type { AppStore } from '../state/appStore';
 import { SocketManager } from '../network/SocketManager';
 import { UIManager } from '../ui';
 import type { SkillSlot } from '../game/types';
+import { getWrongWeaponMessage } from '../utils/skillWeapon';
 
 export class GameView {
   private root: HTMLElement | null = null;
@@ -118,6 +119,9 @@ export class GameView {
             this.handleSkillCast(slot, skill.id);
           }
         },
+        onWrongWeapon: (skill) => {
+          this.uiManager?.showNotification(getWrongWeaponMessage(skill), 'error');
+        },
       });
     }
 
@@ -190,7 +194,7 @@ export class GameView {
     if (npc.isBanker) {
       this.uiManager?.toggleBankPanel();
     } else if (npc.isWeaponMaster || npc.isElementMaster) {
-      this.uiManager?.toggleSkillsMenu();
+      this.socketManager?.openMaster(npc.npcId);
     } else if (npc.isMerchant) {
       this.uiManager?.showNotification(`${npc.name}: "Bienvenue, voyageur!"`);
       // TODO: Ouvrir le shop
